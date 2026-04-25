@@ -1,0 +1,15 @@
+flutter_launcher_icons:
+  image_path: "assets/TrackIt Logo.png"
+  android:
+    image_path: "assets/TrackIt Logo.png"
+    adaptive_icon_background: "#0F1419"
+    adaptive_icon_foreground: "assets/TrackIt Logo.png"
+  ios:
+    image_path: "assets/TrackIt Logo.png"
+    remove_alpha_ios: true
+  windows:
+    generate: true
+    image_path: "assets/TrackIt Logo.png"
+  macos:
+    generate: true
+    image_path: "assets/TrackIt Logo.png"
