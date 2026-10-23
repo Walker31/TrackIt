@@ -1,155 +1,77 @@
-import 'package:sqflite/sqflite.dart';
-import 'package:trackit/models/workouts.dart';
 import 'database_service.dart';
+import 'sync_service.dart';
+import 'sync_outbox.dart';
+import '../models/workouts.dart';
 
-/// Workout Service
-/// Handles all workout-related database operations and calculations
 class WorkoutService {
   final DatabaseService _dbService = DatabaseService();
+  final SyncService _syncService = SyncService();
 
-  /// Add a new workout session
-  /// Returns the inserted workout with its ID
+  /// Add a new workout session (Offline-first)
   Future<Workout> addWorkout(Workout workout) async {
     final db = await _dbService.getDatabase();
-    final id = await db.insert(
-      'workouts',
-      workout.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-    return workout.copyWith(id: id as int?);
+
+    // Save locally
+    final map = workout.toMap();
+    map['is_synced'] = 0;
+    map.remove('exercises'); // Nested list doesn't go into sqlite directly
+
+    final localId = await db.insert('workouts', map);
+    final savedWorkout = workout.copyWith(id: localId);
+
+    // Try sync
+    _syncService.performSync();
+
+    return savedWorkout;
   }
 
-  /// Add an exercise to a workout
-  /// Returns the inserted exercise with its ID
-  Future<Exercise> addExercise(Exercise exercise) async {
-    final db = await _dbService.getDatabase();
-    final id = await db.insert(
-      'exercises',
-      exercise.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-    return exercise.copyWith(id: id as int?);
-  }
-
-  /// Add a set to an exercise
-  /// Returns the inserted set with its ID
-  Future<SetData> addSet(SetData set) async {
-    final db = await _dbService.getDatabase();
-    final id = await db.insert(
-      'sets',
-      set.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-    return set.copyWith(id: id as int?);
-  }
-
-  /// Get all workouts
+  /// Get all workouts (from local cache)
   Future<List<Workout>> getAllWorkouts() async {
     final db = await _dbService.getDatabase();
     final maps = await db.query('workouts', orderBy: 'timestamp DESC');
-    final workouts =
-        List.generate(maps.length, (i) => Workout.fromMap(maps[i]));
 
-    // Load exercises for each workout
-    for (var i = 0; i < workouts.length; i++) {
-      workouts[i] = await _loadWorkoutWithExercises(workouts[i]);
+    final workouts = <Workout>[];
+    for (var map in maps) {
+      final workout = Workout.fromMap(map);
+      workouts.add(await _loadWorkoutWithExercises(workout));
     }
-
     return workouts;
-  }
-
-  /// Get a workout by ID with all exercises and sets
-  Future<Workout?> getWorkoutById(int id) async {
-    final db = await _dbService.getDatabase();
-    final maps =
-        await db.query('workouts', where: 'id = ?', whereArgs: [id]);
-    if (maps.isEmpty) return null;
-
-    var workout = Workout.fromMap(maps[0]);
-    return await _loadWorkoutWithExercises(workout);
   }
 
   /// Get workouts for a specific date
-  /// Returns all workouts that occurred on the given date
   Future<List<Workout>> getWorkoutsByDate(DateTime date) async {
     final db = await _dbService.getDatabase();
-    final startOfDay = DateTime(date.year, date.month, date.day);
-    final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
+    final startOfDay = DateTime(
+      date.year,
+      date.month,
+      date.day,
+    ).toIso8601String();
+    final endOfDay = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      23,
+      59,
+      59,
+    ).toIso8601String();
 
     final maps = await db.query(
       'workouts',
       where: 'timestamp >= ? AND timestamp <= ?',
-      whereArgs: [
-        startOfDay.toIso8601String(),
-        endOfDay.toIso8601String(),
-      ],
+      whereArgs: [startOfDay, endOfDay],
       orderBy: 'timestamp DESC',
     );
 
-    final workouts =
-        List.generate(maps.length, (i) => Workout.fromMap(maps[i]));
-
-    // Load exercises for each workout
-    for (var i = 0; i < workouts.length; i++) {
-      workouts[i] = await _loadWorkoutWithExercises(workouts[i]);
+    final workouts = <Workout>[];
+    for (var map in maps) {
+      final workout = Workout.fromMap(map);
+      workouts.add(await _loadWorkoutWithExercises(workout));
     }
-
     return workouts;
   }
 
-  /// Get workouts for a specific month
-  Future<List<Workout>> getWorkoutsByMonth(int year, int month) async {
-    final db = await _dbService.getDatabase();
-    final startOfMonth = DateTime(year, month, 1);
-    final endOfMonth = DateTime(year, month + 1, 0, 23, 59, 59);
-
-    final maps = await db.query(
-      'workouts',
-      where: 'timestamp >= ? AND timestamp <= ?',
-      whereArgs: [
-        startOfMonth.toIso8601String(),
-        endOfMonth.toIso8601String(),
-      ],
-      orderBy: 'timestamp DESC',
-    );
-
-    final workouts =
-        List.generate(maps.length, (i) => Workout.fromMap(maps[i]));
-
-    // Load exercises for each workout
-    for (var i = 0; i < workouts.length; i++) {
-      workouts[i] = await _loadWorkoutWithExercises(workouts[i]);
-    }
-
-    return workouts;
-  }
-
-  /// Get workouts of a specific type
-  Future<List<Workout>> getWorkoutsByType(WorkoutType type) async {
-    final db = await _dbService.getDatabase();
-    final maps = await db.query(
-      'workouts',
-      where: 'type = ?',
-      whereArgs: [type.name],
-      orderBy: 'timestamp DESC',
-    );
-
-    final workouts =
-        List.generate(maps.length, (i) => Workout.fromMap(maps[i]));
-
-    // Load exercises for each workout
-    for (var i = 0; i < workouts.length; i++) {
-      workouts[i] = await _loadWorkoutWithExercises(workouts[i]);
-    }
-
-    return workouts;
-  }
-
-  /// Helper method to load complete workout with exercises and sets
   Future<Workout> _loadWorkoutWithExercises(Workout workout) async {
     final db = await _dbService.getDatabase();
-
-    // Get exercises for this workout
     final exerciseMaps = await db.query(
       'exercises',
       where: 'workout_id = ?',
@@ -157,335 +79,216 @@ class WorkoutService {
     );
 
     final exercises = <Exercise>[];
-    for (var exerciseMap in exerciseMaps) {
-      var exercise = Exercise.fromMap(exerciseMap);
-
-      // Get sets for this exercise
+    for (var exMap in exerciseMaps) {
       final setMaps = await db.query(
         'sets',
         where: 'exercise_id = ?',
-        whereArgs: [exercise.id],
+        whereArgs: [exMap['id']],
         orderBy: 'set_number ASC',
       );
-
-      final sets = List.generate(setMaps.length, (i) => SetData.fromMap(setMaps[i]));
-      exercise = exercise.copyWith(sets: sets);
-      exercises.add(exercise);
+      final sets = setMaps.map((s) => SetData.fromMap(s)).toList();
+      exercises.add(Exercise.fromMap(exMap).copyWith(sets: sets));
     }
-
     return workout.copyWith(exercises: exercises);
   }
 
-  /// Calculate total volume for a specific workout session
-  /// Formula: Sum of (weight * reps) for all sets in all exercises
-  Future<double> calculateSessionVolume(int workoutId) async {
-    final workout = await getWorkoutById(workoutId);
-    if (workout == null) return 0.0;
-    return workout.getTotalSessionVolume();
-  }
-
-  /// Calculate completion percentage for a specific workout session
-  /// Formula: (Completed Sets / Total Sets) * 100
-  Future<double> calculateSessionCompletionPercentage(int workoutId) async {
-    final workout = await getWorkoutById(workoutId);
-    if (workout == null) return 0.0;
-    return workout.getSessionCompletionPercentage();
-  }
-
-  /// Calculate total volume for an exercise
-  Future<double> calculateExerciseVolume(int exerciseId) async {
+  /// Add an exercise
+  Future<Exercise> addExercise(Exercise exercise) async {
     final db = await _dbService.getDatabase();
-    final result = await db.rawQuery(
-      'SELECT SUM(weight * reps) as total_volume FROM sets WHERE exercise_id = ?',
-      [exerciseId],
-    );
-    return result[0]['total_volume'] != null
-        ? (result[0]['total_volume'] as num).toDouble()
-        : 0.0;
+    final map = exercise.toMap();
+    map['is_synced'] = 0;
+    map.remove('sets');
+    map.remove('workout');
+
+    final localId = await db.insert('exercises', map);
+    _syncService.performSync();
+    return exercise.copyWith(id: localId);
   }
 
-  /// Get completion percentage for an exercise
-  /// Formula: (Completed Sets / Total Sets) * 100
-  Future<double> calculateExerciseCompletionPercentage(int exerciseId) async {
+  /// Add a set
+  Future<SetData> addSet(SetData setData) async {
     final db = await _dbService.getDatabase();
+    final map = setData.toMap();
+    map['is_synced'] = 0;
+    map.remove('exercise');
 
-    final totalResult = await db.rawQuery(
-      'SELECT COUNT(*) as total FROM sets WHERE exercise_id = ?',
-      [exerciseId],
-    );
-
-    final completedResult = await db.rawQuery(
-      'SELECT COUNT(*) as completed FROM sets WHERE exercise_id = ? AND is_completed = 1',
-      [exerciseId],
-    );
-
-    final total = (totalResult[0]['total'] as int?) ?? 0;
-    final completed = (completedResult[0]['completed'] as int?) ?? 0;
-
-    if (total == 0) return 0.0;
-    return (completed / total) * 100;
+    final localId = await db.insert('sets', map);
+    _syncService.performSync();
+    return setData.copyWith(id: localId);
   }
 
-  /// Get workout summary statistics
-  /// Includes total volume, completed sets, and session details
-  Future<Map<String, dynamic>> getWorkoutSummary(int workoutId) async {
-    final workout = await getWorkoutById(workoutId);
-    if (workout == null) {
-      return {
-        'error': 'Workout not found',
-      };
-    }
-
-    return workout.getSessionSummary();
-  }
-
-  /// Get daily workout stats
-  /// Returns number of workouts and total volume for a specific date
-  Future<Map<String, dynamic>> getDailyWorkoutStats(DateTime date) async {
-    final workouts = await getWorkoutsByDate(date);
-
-    double totalVolume = 0.0;
-    int totalCompleted = 0;
-    int totalSets = 0;
-
-    for (var workout in workouts) {
-      totalVolume += workout.getTotalSessionVolume();
-      totalCompleted += workout.getTotalCompletedSets();
-      totalSets += workout.getTotalSets();
-    }
-
-    return {
-      'date': date.toIso8601String(),
-      'workoutCount': workouts.length,
-      'totalVolume': totalVolume.toStringAsFixed(2),
-      'completedSets': totalCompleted,
-      'totalSets': totalSets,
-      'completionPercentage':
-          totalSets > 0 ? ((totalCompleted / totalSets) * 100).toStringAsFixed(2) : '0.00',
-      'workouts': workouts.map((w) => w.getSessionSummary()).toList(),
-    };
-  }
-
-  /// Get monthly workout stats
-  /// Returns workout frequency and volume statistics for a month
-  Future<Map<String, dynamic>> getMonthlyWorkoutStats(int year, int month) async {
-    final workouts = await getWorkoutsByMonth(year, month);
-
-    double totalVolume = 0.0;
-    int totalCompleted = 0;
-    int totalSets = 0;
-    final typeBreakdown = <String, dynamic>{};
-
-    // Initialize type breakdown
-    for (var type in WorkoutType.values) {
-      typeBreakdown[type.name] = {
-        'count': 0,
-        'totalVolume': 0.0,
-      };
-    }
-
-    for (var workout in workouts) {
-      final volume = workout.getTotalSessionVolume();
-      totalVolume += volume;
-      totalCompleted += workout.getTotalCompletedSets();
-      totalSets += workout.getTotalSets();
-
-      // Add to type breakdown
-      final typeStats = typeBreakdown[workout.type.name];
-      typeStats['count'] = (typeStats['count'] as int) + 1;
-      typeStats['totalVolume'] = (typeStats['totalVolume'] as double) + volume;
-    }
-
-    return {
-      'year': year,
-      'month': month,
-      'totalWorkouts': workouts.length,
-      'totalVolume': totalVolume.toStringAsFixed(2),
-      'avgVolumePerWorkout':
-          workouts.isNotEmpty ? (totalVolume / workouts.length).toStringAsFixed(2) : '0.00',
-      'completedSets': totalCompleted,
-      'totalSets': totalSets,
-      'completionPercentage':
-          totalSets > 0 ? ((totalCompleted / totalSets) * 100).toStringAsFixed(2) : '0.00',
-      'typeBreakdown': typeBreakdown,
-    };
-  }
-
-  /// Mark a set as completed
-  Future<void> completeSet(int setId) async {
-    final db = await _dbService.getDatabase();
-    await db.update(
-      'sets',
-      {'is_completed': 1},
-      where: 'id = ?',
-      whereArgs: [setId],
-    );
-  }
-
-  /// Mark a set as incomplete
-  Future<void> uncompleteSet(int setId) async {
-    final db = await _dbService.getDatabase();
-    await db.update(
-      'sets',
-      {'is_completed': 0},
-      where: 'id = ?',
-      whereArgs: [setId],
-    );
-  }
-
-  /// Update a set's weight and reps
+  /// Update a set
   Future<void> updateSet(int setId, double weight, int reps) async {
     final db = await _dbService.getDatabase();
     await db.update(
       'sets',
-      {
-        'weight': weight,
-        'reps': reps,
-      },
+      {'weight': weight, 'reps': reps, 'is_synced': 0},
       where: 'id = ?',
       whereArgs: [setId],
     );
+    _syncService.performSync();
   }
 
-  /// Delete a workout and all its exercises and sets
-  Future<void> deleteWorkout(int workoutId) async {
+  /// Complete a set
+  Future<void> completeSet(int setId) async {
     final db = await _dbService.getDatabase();
-    await db.delete(
-      'workouts',
-      where: 'id = ?',
-      whereArgs: [workoutId],
-    );
-    // Sets and exercises will be deleted due to CASCADE constraint
-  }
-
-  /// Delete an exercise and all its sets
-  Future<void> deleteExercise(int exerciseId) async {
-    final db = await _dbService.getDatabase();
-    await db.delete(
-      'exercises',
-      where: 'id = ?',
-      whereArgs: [exerciseId],
-    );
-    // Sets will be deleted due to CASCADE constraint
-  }
-
-  /// Delete a set
-  Future<void> deleteSet(int setId) async {
-    final db = await _dbService.getDatabase();
-    await db.delete(
+    await db.update(
       'sets',
+      {'is_completed': 1, 'is_synced': 0},
       where: 'id = ?',
       whereArgs: [setId],
     );
+    _syncService.performSync();
   }
 
-  /// Get personal records for a specific exercise
-  /// Returns the heaviest weight lifted for a specific exercise
-  Future<Map<String, dynamic>> getExercisePR(String exerciseName) async {
+  /// Uncomplete a set
+  Future<void> uncompleteSet(int setId) async {
     final db = await _dbService.getDatabase();
-    final result = await db.rawQuery(
-      '''SELECT MAX(weight) as max_weight, reps FROM sets 
-         INNER JOIN exercises ON sets.exercise_id = exercises.id 
-         WHERE exercises.name = ? AND sets.is_completed = 1 
-         GROUP BY reps 
-         ORDER BY max_weight DESC LIMIT 1''',
-      [exerciseName],
+    await db.update(
+      'sets',
+      {'is_completed': 0, 'is_synced': 0},
+      where: 'id = ?',
+      whereArgs: [setId],
     );
-
-    if (result.isEmpty) {
-      return {
-        'exerciseName': exerciseName,
-        'hasRecord': false,
-      };
-    }
-
-    return {
-      'exerciseName': exerciseName,
-      'hasRecord': true,
-      'maxWeight': (result[0]['max_weight'] as num?)?.toDouble() ?? 0.0,
-      'reps': result[0]['reps'],
-    };
+    _syncService.performSync();
   }
 
-  /// Get weekly workout volume data
-  Future<Map<DateTime, double>> getWeeklyVolumeData() async {
-    final now = DateTime.now();
-    final data = <DateTime, double>{};
-    for (int i = 6; i >= 0; i--) {
-      final date = now.subtract(Duration(days: i));
-      final workouts = await getWorkoutsByDate(date);
-      double totalVolume = 0;
-      for (var workout in workouts) {
-        totalVolume += workout.getTotalSessionVolume();
-      }
-      data[DateTime(date.year, date.month, date.day)] = totalVolume;
-    }
-    return data;
-  }
-
-  /// Add a new routine
-  Future<Routine> addRoutine(Routine routine) async {
-    final db = await _dbService.getDatabase();
-    final id = await db.insert('routines', routine.toMap());
-    
-    final savedExercises = <RoutineExercise>[];
-    for (var exercise in routine.exercises) {
-      final exerciseId = await db.insert('routine_exercises', 
-        exercise.toMap()..['routine_id'] = id);
-      savedExercises.add(exercise.copyWith(id: exerciseId, routineId: id as int));
-    }
-    
-    return routine.copyWith(id: id as int, exercises: savedExercises);
-  }
-
-  /// Get all routines
+  /// Get routines
   Future<List<Routine>> getAllRoutines() async {
     final db = await _dbService.getDatabase();
     final maps = await db.query('routines');
     final routines = <Routine>[];
-    
     for (var map in maps) {
       var routine = Routine.fromMap(map);
-      final exerciseMaps = await db.query('routine_exercises', 
-        where: 'routine_id = ?', whereArgs: [routine.id]);
-      final exercises = exerciseMaps.map((e) => RoutineExercise.fromMap(e)).toList();
+      final exMaps = await db.query(
+        'routine_exercises',
+        where: 'routine_id = ?',
+        whereArgs: [routine.id],
+      );
+      final exercises = exMaps.map((e) => RoutineExercise.fromMap(e)).toList();
       routines.add(routine.copyWith(exercises: exercises));
     }
-    
     return routines;
   }
 
-  /// Start a workout session from a routine
+  Future<Routine> addRoutine(Routine routine) async {
+    final db = await _dbService.getDatabase();
+    final rMap = routine.toMap();
+    rMap['is_synced'] = 0;
+    rMap.remove('routine_exercises');
+
+    final localId = await db.insert('routines', rMap);
+
+    for (var ex in routine.exercises) {
+      final exMap = ex.toMap();
+      exMap['routine_id'] = localId;
+      await db.insert('routine_exercises', exMap);
+    }
+
+    _syncService.performSync();
+    return routine.copyWith(id: localId);
+  }
+
+  /// Start a workout from a routine template
   Future<Workout> startWorkoutFromRoutine(Routine routine) async {
-    final workout = await addWorkout(Workout(
-      type: routine.type,
-      timestamp: DateTime.now(),
-      notes: 'Routine: ${routine.name}',
-    ));
+    final db = await _dbService.getDatabase();
+    final now = DateTime.now();
 
-    for (var routineEx in routine.exercises) {
-      final exercise = await addExercise(Exercise(
-        workoutId: workout.id!,
-        name: routineEx.name,
-        muscleGroup: routineEx.muscleGroup,
-      ));
+    final workoutId = await db.insert('workouts', {
+      'type': routine.type.name,
+      'timestamp': now.toIso8601String(),
+      'notes': 'Started from ${routine.name}',
+      'is_synced': 0,
+    });
 
-      for (int i = 0; i < routineEx.setsCount; i++) {
-        await addSet(SetData(
-          exerciseId: exercise.id!,
-          setNumber: i + 1,
-          weight: 0,
-          reps: 0,
-        ));
+    for (final routineExercise in routine.exercises) {
+      final exerciseId = await db.insert('exercises', {
+        'workout_id': workoutId,
+        'name': routineExercise.name,
+        'muscle_group': routineExercise.muscleGroup,
+        'is_synced': 0,
+      });
+
+      for (int i = 1; i <= routineExercise.setsCount; i++) {
+        await db.insert('sets', {
+          'exercise_id': exerciseId,
+          'set_number': i,
+          'weight': 0.0,
+          'reps': 0,
+          'is_completed': 0,
+          'is_synced': 0,
+        });
       }
     }
 
-    return await getWorkoutById(workout.id!) ?? workout;
+    _syncService.performSync();
+
+    return Workout(
+      id: workoutId,
+      type: routine.type,
+      timestamp: now,
+      notes: 'Started from ${routine.name}',
+    );
   }
 
-  /// Delete a routine
-  Future<void> deleteRoutine(int id) async {
+  /// Get last 7 days of workout volume totals (including today)
+  Future<Map<DateTime, double>> getWeeklyVolumeData() async {
     final db = await _dbService.getDatabase();
-    await db.delete('routines', where: 'id = ?', whereArgs: [id]);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final startDate = today.subtract(const Duration(days: 6));
+    final endDate = DateTime(today.year, today.month, today.day, 23, 59, 59);
+
+    final weeklyData = <DateTime, double>{
+      for (int i = 0; i < 7; i++) startDate.add(Duration(days: i)): 0.0,
+    };
+
+    final rows = await db.rawQuery(
+      '''
+      SELECT w.timestamp AS workout_timestamp, s.weight, s.reps, s.is_completed
+      FROM workouts w
+      LEFT JOIN exercises e ON e.workout_id = w.id
+      LEFT JOIN sets s ON s.exercise_id = e.id
+      WHERE w.timestamp >= ? AND w.timestamp <= ?
+      ''',
+      [startDate.toIso8601String(), endDate.toIso8601String()],
+    );
+
+    for (final row in rows) {
+      final timestamp = row['workout_timestamp'] as String?;
+      if (timestamp == null) continue;
+
+      final day = DateTime.parse(timestamp);
+      final dayKey = DateTime(day.year, day.month, day.day);
+      if (!weeklyData.containsKey(dayKey)) continue;
+
+      final isCompletedRaw = row['is_completed'];
+      final isCompleted = isCompletedRaw == 1 || isCompletedRaw == true;
+      if (!isCompleted) continue;
+
+      final weight = double.tryParse((row['weight'] ?? 0).toString()) ?? 0.0;
+      final reps = int.tryParse((row['reps'] ?? 0).toString()) ?? 0;
+      weeklyData[dayKey] = (weeklyData[dayKey] ?? 0.0) + (weight * reps);
+    }
+
+    return weeklyData;
+  }
+
+  /// Delete workout
+  Future<void> deleteWorkout(int id) async {
+    final db = await _dbService.getDatabase();
+    final rows = await db.query(
+      'workouts',
+      columns: ['remote_id'],
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (rows.isNotEmpty && rows.first['remote_id'] != null) {
+      await SyncOutbox.enqueueDelete(
+        db,
+        'fitness/workouts/${rows.first['remote_id']}/',
+      );
+    }
+    await db.delete('workouts', where: 'id = ?', whereArgs: [id]);
   }
 }

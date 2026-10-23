@@ -1,96 +1,117 @@
-import 'package:sqflite/sqflite.dart';
-import 'package:trackit/models/expenses.dart';
 import 'database_service.dart';
+import 'api_service.dart';
+import 'sync_service.dart';
+import 'sync_outbox.dart';
+import 'app_mode_service.dart';
+import '../models/expenses.dart';
+import 'package:sqflite/sqflite.dart';
 
-/// Expense Service
-/// Handles all expense-related database operations and calculations
 class ExpenseService {
   final DatabaseService _dbService = DatabaseService();
+  final ApiService _apiService = ApiService();
+  final SyncService _syncService = SyncService();
 
-  /// Add a new expense
-  /// Returns the inserted expense with its ID
+  /// Add a new expense (Offline-first)
   Future<Expense> addExpense(Expense expense) async {
     final db = await _dbService.getDatabase();
-    final id = await db.insert(
-      'expenses',
-      expense.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-    return expense.copyWith(id: id as int?);
+
+    // 1. Save locally first
+    final map = expense.toMap();
+    map['is_synced'] = 0;
+    final localId = await db.insert('expenses', map);
+    final savedExpense = expense.copyWith(id: localId);
+
+    // 2. Try to sync right away when connected to a server
+    if (AppModeService.isServer && await _syncService.isOnline()) {
+      try {
+        final response = await _apiService.post(
+          ApiService.transactionsPath,
+          data: expense.toApi(),
+        );
+        final remoteId = response.data['id'];
+
+        await db.update(
+          'expenses',
+          {'remote_id': remoteId, 'is_synced': 1},
+          where: 'id = ?',
+          whereArgs: [localId],
+        );
+        return savedExpense.copyWith(id: localId);
+      } catch (e) {
+        // Stay unsynced, will be picked up by SyncService later
+      }
+    }
+
+    return savedExpense;
   }
 
-  /// Get all expenses
+  /// Get all expenses (from local cache)
   Future<List<Expense>> getAllExpenses() async {
     final db = await _dbService.getDatabase();
     final maps = await db.query('expenses', orderBy: 'timestamp DESC');
-    return List.generate(maps.length, (i) => Expense.fromMap(maps[i]));
+    return maps.map((e) => Expense.fromMap(e)).toList();
   }
 
   /// Get expenses for a specific date
-  /// Returns all expenses that occurred on the given date
   Future<List<Expense>> getExpensesByDate(DateTime date) async {
     final db = await _dbService.getDatabase();
-    final startOfDay = DateTime(date.year, date.month, date.day);
-    final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59);
+    final startOfDay = DateTime(
+      date.year,
+      date.month,
+      date.day,
+    ).toIso8601String();
+    final endOfDay = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      23,
+      59,
+      59,
+    ).toIso8601String();
 
     final maps = await db.query(
       'expenses',
       where: 'timestamp >= ? AND timestamp <= ?',
-      whereArgs: [
-        startOfDay.toIso8601String(),
-        endOfDay.toIso8601String(),
-      ],
+      whereArgs: [startOfDay, endOfDay],
       orderBy: 'timestamp DESC',
     );
-    return List.generate(maps.length, (i) => Expense.fromMap(maps[i]));
+    return maps.map((e) => Expense.fromMap(e)).toList();
   }
 
   /// Get expenses for a specific month
-  /// Returns all expenses in the given month and year
   Future<List<Expense>> getExpensesByMonth(int year, int month) async {
     final db = await _dbService.getDatabase();
-    final startOfMonth = DateTime(year, month, 1);
-    final endOfMonth = DateTime(year, month + 1, 0, 23, 59, 59);
+    final startOfMonth = DateTime(year, month, 1).toIso8601String();
+    final endOfMonth = DateTime(
+      year,
+      month + 1,
+      0,
+      23,
+      59,
+      59,
+    ).toIso8601String();
 
     final maps = await db.query(
       'expenses',
       where: 'timestamp >= ? AND timestamp <= ?',
-      whereArgs: [
-        startOfMonth.toIso8601String(),
-        endOfMonth.toIso8601String(),
-      ],
+      whereArgs: [startOfMonth, endOfMonth],
       orderBy: 'timestamp DESC',
     );
-    return List.generate(maps.length, (i) => Expense.fromMap(maps[i]));
-  }
-
-  /// Get expenses by category
-  Future<List<Expense>> getExpensesByCategory(ExpenseCategory category) async {
-    final db = await _dbService.getDatabase();
-    final maps = await db.query(
-      'expenses',
-      where: 'category = ?',
-      whereArgs: [category.name],
-      orderBy: 'timestamp DESC',
-    );
-    return List.generate(maps.length, (i) => Expense.fromMap(maps[i]));
+    return maps.map((e) => Expense.fromMap(e)).toList();
   }
 
   /// Get daily expense summary
-  /// Returns total amount and category-wise breakdown for a specific date
   Future<DailyExpenseSummary> getDailySummary(DateTime date) async {
     final expenses = await getExpensesByDate(date);
 
     double totalAmount = 0.0;
     final categoryTotals = <ExpenseCategory, double>{};
 
-    // Initialize all categories with 0
     for (var category in ExpenseCategory.values) {
       categoryTotals[category] = 0.0;
     }
 
-    // Calculate totals
-    for (var expense in expenses) {
+    for (var expense in expenses.where((e) => !e.isIncome)) {
       totalAmount += expense.amount;
       categoryTotals[expense.category] =
           (categoryTotals[expense.category] ?? 0.0) + expense.amount;
@@ -103,105 +124,36 @@ class ExpenseService {
     );
   }
 
-  /// Get monthly expense report
-  /// Returns comprehensive monthly data including daily breakdowns
-  Future<MonthlyExpenseReport> getMonthlyReport(int year, int month) async {
+  /// Get monthly total
+  Future<double> getMonthlyTotal(int year, int month) async {
     final expenses = await getExpensesByMonth(year, month);
+    return expenses
+        .where((e) => !e.isIncome)
+        .fold<double>(0.0, (sum, e) => sum + e.amount);
+  }
 
-    double totalAmount = 0.0;
-    final categoryTotals = <ExpenseCategory, double>{};
-    final dailySummaries = <DailyExpenseSummary>[];
+  /// Get last 7 days of expense totals (including today)
+  Future<Map<DateTime, double>> getWeeklyExpenseData() async {
+    final expenses = await getAllExpenses();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final startDate = today.subtract(const Duration(days: 6));
 
-    // Initialize all categories with 0
-    for (var category in ExpenseCategory.values) {
-      categoryTotals[category] = 0.0;
-    }
+    final weeklyData = <DateTime, double>{
+      for (int i = 0; i < 7; i++) startDate.add(Duration(days: i)): 0.0,
+    };
 
-    // Group expenses by day
-    final expensesByDay = <DateTime, List<Expense>>{};
-    for (var expense in expenses) {
-      final dateKey = DateTime(
+    for (final expense in expenses.where((e) => !e.isIncome)) {
+      final day = DateTime(
         expense.timestamp.year,
         expense.timestamp.month,
         expense.timestamp.day,
       );
-      if (!expensesByDay.containsKey(dateKey)) {
-        expensesByDay[dateKey] = [];
-      }
-      expensesByDay[dateKey]!.add(expense);
+      if (day.isBefore(startDate) || day.isAfter(today)) continue;
+      weeklyData[day] = (weeklyData[day] ?? 0.0) + expense.amount;
     }
 
-    // Create daily summaries
-    for (var dateEntry in expensesByDay.entries) {
-      double dayTotal = 0.0;
-      final dayCategoryTotals = <ExpenseCategory, double>{};
-
-      // Initialize daily categories
-      for (var category in ExpenseCategory.values) {
-        dayCategoryTotals[category] = 0.0;
-      }
-
-      for (var expense in dateEntry.value) {
-        dayTotal += expense.amount;
-        dayCategoryTotals[expense.category] =
-            (dayCategoryTotals[expense.category] ?? 0.0) + expense.amount;
-      }
-
-      // Add daily totals to monthly totals
-      totalAmount += dayTotal;
-      dayCategoryTotals.forEach((category, amount) {
-        categoryTotals[category] = (categoryTotals[category] ?? 0.0) + amount;
-      });
-
-      dailySummaries.add(
-        DailyExpenseSummary(
-          date: dateEntry.key,
-          totalAmount: dayTotal,
-          categoryTotals: dayCategoryTotals,
-        ),
-      );
-    }
-
-    // Sort daily summaries by date
-    dailySummaries.sort((a, b) => a.date.compareTo(b.date));
-
-    return MonthlyExpenseReport(
-      year: year,
-      month: month,
-      totalAmount: totalAmount,
-      categoryTotals: categoryTotals,
-      dailySummaries: dailySummaries,
-    );
-  }
-
-  /// Get category-wise total for a specific date range
-  Future<Map<ExpenseCategory, double>> getCategoryTotalsForRange(
-    DateTime startDate,
-    DateTime endDate,
-  ) async {
-    final db = await _dbService.getDatabase();
-    final maps = await db.query(
-      'expenses',
-      where: 'timestamp >= ? AND timestamp <= ?',
-      whereArgs: [
-        startDate.toIso8601String(),
-        endDate.toIso8601String(),
-      ],
-    );
-
-    final expenses = List.generate(maps.length, (i) => Expense.fromMap(maps[i]));
-    final categoryTotals = <ExpenseCategory, double>{};
-
-    for (var category in ExpenseCategory.values) {
-      categoryTotals[category] = 0.0;
-    }
-
-    for (var expense in expenses) {
-      categoryTotals[expense.category] =
-          (categoryTotals[expense.category] ?? 0.0) + expense.amount;
-    }
-
-    return categoryTotals;
+    return weeklyData;
   }
 
   /// Update an existing expense
@@ -209,87 +161,53 @@ class ExpenseService {
     final db = await _dbService.getDatabase();
     await db.update(
       'expenses',
-      expense.toMap(),
+      expense.toMap()..['is_synced'] = 0,
       where: 'id = ?',
       whereArgs: [expense.id],
     );
+
+    // Try to sync
+    _syncService.performSync();
   }
 
   /// Delete an expense
   Future<void> deleteExpense(int id) async {
     final db = await _dbService.getDatabase();
-    await db.delete(
+    final expense = await db.query(
       'expenses',
       where: 'id = ?',
       whereArgs: [id],
     );
-  }
 
-  /// Get total expenses for a date range
-  Future<double> getTotalForRange(DateTime startDate, DateTime endDate) async {
-    final db = await _dbService.getDatabase();
-    final result = await db.rawQuery(
-      'SELECT SUM(amount) as total FROM expenses WHERE timestamp >= ? AND timestamp <= ?',
-      [
-        startDate.toIso8601String(),
-        endDate.toIso8601String(),
-      ],
-    );
-    return result[0]['total'] != null ? (result[0]['total'] as num).toDouble() : 0.0;
-  }
-
-  /// Get average daily spending for a month
-  Future<double> getAverageDailySpending(int year, int month) async {
-    final total = await getTotalForRange(
-      DateTime(year, month, 1),
-      DateTime(year, month + 1, 0),
-    );
-    final daysInMonth = DateTime(year, month + 1, 0).day;
-    return total / daysInMonth;
-  }
-
-  /// Get top spending categories for a date range
-  Future<List<MapEntry<ExpenseCategory, double>>> getTopCategories({
-    required DateTime startDate,
-    required DateTime endDate,
-    int limit = 5,
-  }) async {
-    final categoryTotals =
-        await getCategoryTotalsForRange(startDate, endDate);
-    final sorted = categoryTotals.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return sorted.take(limit).toList();
-  }
-
-  /// Get weekly expense summary
-  Future<Map<DateTime, double>> getWeeklyExpenseData() async {
-    final now = DateTime.now();
-    final data = <DateTime, double>{};
-    for (int i = 6; i >= 0; i--) {
-      final date = now.subtract(Duration(days: i));
-      final summary = await getDailySummary(date);
-      data[DateTime(date.year, date.month, date.day)] = summary.totalAmount;
+    // Already on the server: queue the delete so it replays when online.
+    if (expense.isNotEmpty && expense.first['remote_id'] != null) {
+      await SyncOutbox.enqueueDelete(
+        db,
+        '${ApiService.transactionsPath}${expense.first['remote_id']}/',
+      );
     }
-    return data;
+
+    await db.delete('expenses', where: 'id = ?', whereArgs: [id]);
   }
 
-  /// Get monthly budget from settings
   Future<double> getMonthlyBudget() async {
     final db = await _dbService.getDatabase();
-    final result = await db.query('settings', where: 'key = ?', whereArgs: ['monthly_budget']);
-    if (result.isNotEmpty) {
-      return double.tryParse(result.first['value'] as String) ?? 50000;
+    final maps = await db.query(
+      'settings',
+      where: 'key = ?',
+      whereArgs: ['monthly_budget'],
+    );
+    if (maps.isNotEmpty) {
+      return double.parse(maps.first['value'] as String);
     }
     return 50000;
   }
 
-  /// Set monthly budget in settings
   Future<void> setMonthlyBudget(double amount) async {
     final db = await _dbService.getDatabase();
-    await db.insert(
-      'settings',
-      {'key': 'monthly_budget', 'value': amount.toString()},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('settings', {
+      'key': 'monthly_budget',
+      'value': amount.toString(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 }

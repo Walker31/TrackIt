@@ -4,6 +4,7 @@ import '../../theme/app_text_styles.dart';
 import '../app_card.dart';
 import '../glass_container.dart';
 import '../app_button.dart';
+import '../app_snackbar.dart';
 import '../../models/workouts.dart';
 import '../../providers/workout_provider.dart';
 
@@ -41,36 +42,70 @@ class ActiveExerciseTracker extends StatelessWidget {
               Text(exercise.name, style: AppTextStyles.h3),
               Container(
                 padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.1), shape: BoxShape.circle),
-                child: const Icon(Icons.history, color: AppColors.primary, size: 20),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.history,
+                  color: AppColors.primary,
+                  size: 20,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 24),
           Row(
             children: [
-              _buildMetricPicker("Weight", "${weight.toStringAsFixed(1)} kg", onWeightDec, onWeightInc),
+              _buildMetricPicker(
+                "Weight",
+                "${weight.toStringAsFixed(1)} kg",
+                onWeightDec,
+                onWeightInc,
+              ),
               const SizedBox(width: 16),
               _buildMetricPicker("Reps", reps.toString(), onRepsDec, onRepsInc),
             ],
           ),
           const SizedBox(height: 24),
           AppButton(
-            text: exercise.sets.any((s) => !s.isCompleted) ? "Complete Set" : "All Sets Done",
-            onPressed: exercise.sets.any((s) => !s.isCompleted) 
-              ? () => provider.completeSet(
-                  exercise.sets.where((s) => !s.isCompleted).first.id!,
-                  weight,
-                  reps,
-                )
-              : null,
+            text: exercise.sets.any((s) => !s.isCompleted)
+                ? "Complete Set"
+                : "All Sets Done",
+            onPressed: exercise.sets.any((s) => !s.isCompleted)
+                ? () {
+                    final pending = exercise.sets
+                        .where((s) => !s.isCompleted)
+                        .toList();
+                    final current = pending.first;
+                    provider.completeSet(current.id!, weight, reps);
+                    final isLast = pending.length == 1;
+                    AppSnackbar.success(
+                      context,
+                      isLast
+                          ? '${exercise.name} complete — great work!'
+                          : 'Set ${current.setNumber} logged: '
+                                '${weight.toStringAsFixed(1)}kg × $reps',
+                      aboveNav: true,
+                    );
+                  }
+                : () => AppSnackbar.info(
+                    context,
+                    'All sets for ${exercise.name} are already done.',
+                    aboveNav: true,
+                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMetricPicker(String label, String value, VoidCallback onDec, VoidCallback onInc) {
+  Widget _buildMetricPicker(
+    String label,
+    String value,
+    VoidCallback onDec,
+    VoidCallback onInc,
+  ) {
     return Expanded(
       child: GlassContainer(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -82,9 +117,26 @@ class ActiveExerciseTracker extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                IconButton(onPressed: onDec, icon: const Icon(Icons.remove_circle_outline, color: AppColors.textSecondary)),
-                Text(value, style: AppTextStyles.bodyLg.copyWith(fontWeight: FontWeight.bold)),
-                IconButton(onPressed: onInc, icon: const Icon(Icons.add_circle_outline, color: AppColors.primary)),
+                IconButton(
+                  onPressed: onDec,
+                  icon: Icon(
+                    Icons.remove_circle_outline,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: AppTextStyles.bodyLg.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                IconButton(
+                  onPressed: onInc,
+                  icon: const Icon(
+                    Icons.add_circle_outline,
+                    color: AppColors.primary,
+                  ),
+                ),
               ],
             ),
           ],

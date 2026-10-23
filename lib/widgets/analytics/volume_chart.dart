@@ -8,10 +8,7 @@ import '../app_card.dart';
 class VolumeChart extends StatelessWidget {
   final Map<DateTime, double> data;
 
-  const VolumeChart({
-    super.key,
-    required this.data,
-  });
+  const VolumeChart({super.key, required this.data});
 
   @override
   Widget build(BuildContext context) {
@@ -34,17 +31,28 @@ class VolumeChart extends StatelessWidget {
                     sideTitles: SideTitles(
                       showTitles: true,
                       getTitlesWidget: (value, meta) {
-                        final date = DateTime.now().subtract(Duration(days: 6 - value.toInt()));
+                        final date = DateTime.now().subtract(
+                          Duration(days: 6 - value.toInt()),
+                        );
                         return Padding(
                           padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(DateFormat('E').format(date).toUpperCase(), style: AppTextStyles.label.copyWith(fontSize: 10)),
+                          child: Text(
+                            DateFormat('E').format(date).toUpperCase(),
+                            style: AppTextStyles.label.copyWith(fontSize: 10),
+                          ),
                         );
                       },
                     ),
                   ),
-                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  leftTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                 ),
                 borderData: FlBorderData(show: false),
                 lineBarsData: [

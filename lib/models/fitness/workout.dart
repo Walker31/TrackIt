@@ -52,6 +52,7 @@ class Workout {
       'type': type.name,
       'timestamp': timestamp.toIso8601String(),
       'notes': notes,
+      'exercises': exercises.map((e) => e.toMap()).toList(),
     };
   }
 
@@ -61,6 +62,9 @@ class Workout {
       type: WorkoutType.fromString(map['type'] as String),
       timestamp: DateTime.parse(map['timestamp'] as String),
       notes: map['notes'] as String?,
+      exercises: map['exercises'] != null
+          ? (map['exercises'] as List).map((e) => Exercise.fromMap(e)).toList()
+          : [],
     );
   }
 

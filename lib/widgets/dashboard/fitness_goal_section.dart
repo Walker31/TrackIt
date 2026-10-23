@@ -26,17 +26,26 @@ class FitnessGoalSection extends StatelessWidget {
           subtitle: "Workout",
           action: TextButton(
             onPressed: onViewAll,
-            child: const Text("View All", style: TextStyle(color: AppColors.primary)),
+            child: const Text(
+              "View All",
+              style: TextStyle(color: AppColors.primary),
+            ),
           ),
         ),
         const SizedBox(height: 16),
         if (provider.isLoading)
-          const Center(child: CircularProgressIndicator(color: AppColors.primary))
-        else if (provider.todayWorkout == null || provider.todayWorkout!.exercises.isEmpty)
+          const Center(
+            child: CircularProgressIndicator(color: AppColors.primary),
+          )
+        else if (provider.todayWorkout == null ||
+            provider.todayWorkout!.exercises.isEmpty)
           const AppCard(child: Center(child: Text("No exercises logged today")))
         else
           Column(
-            children: provider.todayWorkout!.exercises.take(2).map((e) => _buildExerciseCard(e)).toList(),
+            children: provider.todayWorkout!.exercises
+                .take(2)
+                .map((e) => _buildExerciseCard(e))
+                .toList(),
           ),
       ],
     );
@@ -57,20 +66,38 @@ class FitnessGoalSection extends StatelessWidget {
                     color: AppColors.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.fitness_center, color: AppColors.primary, size: 20),
+                  child: const Icon(
+                    Icons.fitness_center,
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(exercise.name, style: AppTextStyles.bodyMd.copyWith(fontWeight: FontWeight.bold)),
-                      Text(exercise.muscleGroup, style: AppTextStyles.bodySm.copyWith(color: AppColors.textSecondary)),
+                      Text(
+                        exercise.name,
+                        style: AppTextStyles.bodyMd.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        exercise.muscleGroup,
+                        style: AppTextStyles.bodySm.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                Text("${exercise.getCompletedSetsCount()}/${exercise.sets.length} Sets", 
-                  style: AppTextStyles.bodySm.copyWith(fontWeight: FontWeight.bold)),
+                Text(
+                  "${exercise.getCompletedSetsCount()}/${exercise.sets.length} Sets",
+                  style: AppTextStyles.bodySm.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 16),

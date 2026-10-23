@@ -20,23 +20,25 @@ class SetData {
   Map<String, dynamic> toMap() {
     return {
       if (id != null) 'id': id,
-      'exercise_id': exerciseId,
+      'exercise': exerciseId, // Django field name
       'set_number': setNumber,
-      'weight': weight,
+      'weight': weight.toString(), // Send as string for EncryptedCharField
       'reps': reps,
-      'is_completed': isCompleted ? 1 : 0,
+      'is_completed': isCompleted, // Send as bool for Django
     };
   }
 
   factory SetData.fromMap(Map<String, dynamic> map) {
     return SetData(
       id: map['id'] as int?,
-      exerciseId: map['exercise_id'] as int,
+      exerciseId: map['exercise'] as int, // Django uses 'exercise'
       setNumber: map['set_number'] as int,
-      weight: (map['weight'] as num).toDouble(),
+      weight: double.parse(map['weight'].toString()),
       reps: map['reps'] as int,
-      isCompleted: (map['is_completed'] as int) == 1,
-      createdAt: map['created_at'] != null ? DateTime.parse(map['created_at'] as String) : null,
+      isCompleted: map['is_completed'] as bool, // Django returns bool
+      createdAt: map['created_at'] != null
+          ? DateTime.parse(map['created_at'] as String)
+          : null,
     );
   }
 

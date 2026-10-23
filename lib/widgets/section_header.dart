@@ -19,21 +19,13 @@ class SectionHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (subtitle != null) ...[
-          Text(
-            subtitle!.toUpperCase(),
-            style: AppTextStyles.label,
-          ),
+          Text(subtitle!.toUpperCase(), style: AppTextStyles.label),
           const SizedBox(height: 8),
         ],
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(
-              child: Text(
-                title,
-                style: AppTextStyles.h2,
-              ),
-            ),
+            Expanded(child: Text(title, style: AppTextStyles.h2)),
             ?action,
           ],
         ),

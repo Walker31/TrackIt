@@ -3,17 +3,20 @@ import 'package:flutter/services.dart';
 import '../models/expenses.dart';
 import '../services/expense_service.dart';
 import '../services/notification_service.dart';
+import '../services/sync_service.dart';
 
 class ExpenseProvider extends ChangeNotifier {
   final ExpenseService _service = ExpenseService();
-  
+
   List<Expense> _expenses = [];
   DailyExpenseSummary? _todaySummary;
+  double _monthlySpent = 0;
   double _monthlyBudget = 50000;
   bool _isLoading = false;
 
   List<Expense> get expenses => _expenses;
   DailyExpenseSummary? get todaySummary => _todaySummary;
+  double get monthlySpent => _monthlySpent;
   double get monthlyBudget => _monthlyBudget;
   bool get isLoading => _isLoading;
 
@@ -26,9 +29,11 @@ class ExpenseProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      await SyncService().performSync();
       final now = DateTime.now();
       _expenses = await _service.getExpensesByDate(now);
       _todaySummary = await _service.getDailySummary(now);
+      _monthlySpent = await _service.getMonthlyTotal(now.year, now.month);
       _monthlyBudget = await _service.getMonthlyBudget();
     } catch (e) {
       debugPrint('Error refreshing expenses: $e');
@@ -44,12 +49,12 @@ class ExpenseProvider extends ChangeNotifier {
     HapticFeedback.lightImpact();
 
     // Budget Alert
-    final dailyLimit = _monthlyBudget / 30;
-    if (_todaySummary != null && _todaySummary!.totalAmount > dailyLimit) {
+    if (_monthlySpent > _monthlyBudget) {
       NotificationService().showNotification(
         id: 100,
         title: "Budget Alert!",
-        body: "You've exceeded your daily limit of ₹${dailyLimit.toStringAsFixed(0)}",
+        body:
+            "You've exceeded your monthly budget of ₹${_monthlyBudget.toStringAsFixed(0)}",
       );
     }
   }
@@ -63,11 +68,11 @@ class ExpenseProvider extends ChangeNotifier {
     await _service.setMonthlyBudget(amount);
     await refreshData();
   }
-  
+
   Future<List<Expense>> getExpensesForDate(DateTime date) async {
     return await _service.getExpensesByDate(date);
   }
-  
+
   Future<DailyExpenseSummary?> getSummaryForDate(DateTime date) async {
     return await _service.getDailySummary(date);
   }

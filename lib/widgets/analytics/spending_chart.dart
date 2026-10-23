@@ -8,10 +8,7 @@ import '../app_card.dart';
 class SpendingChart extends StatelessWidget {
   final Map<DateTime, double> data;
 
-  const SpendingChart({
-    super.key,
-    required this.data,
-  });
+  const SpendingChart({super.key, required this.data});
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +35,9 @@ class SpendingChart extends StatelessWidget {
             child: BarChart(
               BarChartData(
                 alignment: BarChartAlignment.spaceAround,
-                maxY: data.values.isEmpty ? 100 : data.values.reduce((a, b) => a > b ? a : b) * 1.2,
+                maxY: data.values.isEmpty
+                    ? 100
+                    : data.values.reduce((a, b) => a > b ? a : b) * 1.2,
                 barTouchData: BarTouchData(enabled: true),
                 titlesData: FlTitlesData(
                   show: true,
@@ -46,17 +45,28 @@ class SpendingChart extends StatelessWidget {
                     sideTitles: SideTitles(
                       showTitles: true,
                       getTitlesWidget: (value, meta) {
-                        final date = DateTime.now().subtract(Duration(days: 6 - value.toInt()));
+                        final date = DateTime.now().subtract(
+                          Duration(days: 6 - value.toInt()),
+                        );
                         return Padding(
                           padding: const EdgeInsets.only(top: 8.0),
-                          child: Text(DateFormat('E').format(date).toUpperCase(), style: AppTextStyles.label.copyWith(fontSize: 10)),
+                          child: Text(
+                            DateFormat('E').format(date).toUpperCase(),
+                            style: AppTextStyles.label.copyWith(fontSize: 10),
+                          ),
                         );
                       },
                     ),
                   ),
-                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  leftTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  topTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
+                  rightTitles: const AxisTitles(
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                 ),
                 gridData: const FlGridData(show: false),
                 borderData: FlBorderData(show: false),

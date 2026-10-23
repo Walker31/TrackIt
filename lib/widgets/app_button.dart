@@ -22,17 +22,19 @@ class AppButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final contentColor = isPrimary ? Colors.white : AppColors.textPrimary;
+
     final buttonContent = Row(
       mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 20, color: Colors.white),
+          Icon(icon, size: 20, color: contentColor),
           const SizedBox(width: 8),
         ],
         Text(
           text.toUpperCase(),
-          style: AppTextStyles.label.copyWith(color: Colors.white),
+          style: AppTextStyles.label.copyWith(color: contentColor),
         ),
       ],
     );

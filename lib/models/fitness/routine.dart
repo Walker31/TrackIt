@@ -14,11 +14,7 @@ class Routine {
   });
 
   Map<String, dynamic> toMap() {
-    return {
-      if (id != null) 'id': id,
-      'name': name,
-      'type': type.name,
-    };
+    return {if (id != null) 'id': id, 'name': name, 'type': type.name};
   }
 
   factory Routine.fromMap(Map<String, dynamic> map) {

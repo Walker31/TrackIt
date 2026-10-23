@@ -25,7 +25,10 @@ class RoutineSelector extends StatelessWidget {
           subtitle: "Quick Start",
           action: IconButton(
             onPressed: onCreateRoutine,
-            icon: const Icon(Icons.add_circle_outline, color: AppColors.primary),
+            icon: const Icon(
+              Icons.add_circle_outline,
+              color: AppColors.primary,
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -50,8 +53,16 @@ class RoutineSelector extends StatelessWidget {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(routine.name, style: AppTextStyles.bodyMd.copyWith(fontWeight: FontWeight.bold)),
-                          Text("${routine.exercises.length} Exercises", style: AppTextStyles.label),
+                          Text(
+                            routine.name,
+                            style: AppTextStyles.bodyMd.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            "${routine.exercises.length} Exercises",
+                            style: AppTextStyles.label,
+                          ),
                         ],
                       ),
                     ),

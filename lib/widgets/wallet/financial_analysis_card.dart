@@ -1,86 +1,140 @@
 import 'package:flutter/material.dart';
+import '../../models/expenses.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../app_card.dart';
+import '../donut_chart.dart';
 import '../../providers/expense_provider.dart';
+import '../animated/count_up_text.dart';
 
 class FinancialAnalysisCard extends StatelessWidget {
   final ExpenseProvider provider;
 
-  const FinancialAnalysisCard({
-    super.key,
-    required this.provider,
-  });
+  const FinancialAnalysisCard({super.key, required this.provider});
 
   @override
   Widget build(BuildContext context) {
     if (provider.isLoading) {
-      return const AppCard(child: Center(child: CircularProgressIndicator(color: AppColors.primary)));
+      return const AppCard(
+        child: Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
     }
 
     final summary = provider.todaySummary;
-    if (summary == null || summary.categoryTotals.isEmpty) {
+    final List<MapEntry<ExpenseCategory, double>> nonZeroCategories =
+        summary?.categoryTotals.entries.where((e) => e.value > 0).toList() ??
+        <MapEntry<ExpenseCategory, double>>[];
+
+    if (summary == null ||
+        summary.totalAmount <= 0 ||
+        nonZeroCategories.isEmpty) {
       return AppCard(
         child: Column(
           children: [
-            const Icon(Icons.account_balance_wallet, size: 48, color: AppColors.textTertiary),
+            Icon(
+              Icons.account_balance_wallet,
+              size: 48,
+              color: AppColors.textTertiary,
+            ),
             const SizedBox(height: 16),
             Text("No transactions yet", style: AppTextStyles.bodyLg),
-            const Text("Start tracking your expenses", style: AppTextStyles.bodySm),
+            const Text(
+              "Start tracking your expenses",
+              style: AppTextStyles.bodySm,
+            ),
           ],
         ),
       );
     }
 
+    // Sort largest-first and cap the legend at 4 direct-labeled slices;
+    // anything smaller folds into "Other" so the legend never overflows.
+    final sorted = nonZeroCategories.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final shown = sorted.take(4).toList();
+
     return AppCard(
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              _buildStatItem("Spent Today", "₹${summary.totalAmount.toStringAsFixed(0)}", AppColors.expense),
-              _buildStatItem("Top Category", summary.categoryTotals.entries.reduce((a, b) => a.value > b.value ? a : b).key.displayName, AppColors.primary),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const Divider(color: Colors.white10),
-          const SizedBox(height: 24),
-          Row(
-            children: summary.categoryTotals.entries.take(4).map((e) {
-              final percentage = e.value / summary.totalAmount;
-              return Expanded(
-                child: Column(
+              SizedBox(
+                width: 96,
+                height: 96,
+                child: Stack(
+                  alignment: Alignment.center,
                   children: [
-                    Text("${(percentage * 100).toStringAsFixed(0)}%", style: AppTextStyles.label),
-                    const SizedBox(height: 8),
-                    Container(
-                      height: 4,
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      decoration: BoxDecoration(
-                        color: e.key.color,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+                    DonutChart(
+                      categoryTotals: summary.categoryTotals,
+                      totalAmount: summary.totalAmount,
+                      size: 96,
                     ),
-                    const SizedBox(height: 8),
-                    Icon(e.key.icon, color: e.key.color, size: 16),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          "SPENT",
+                          style: AppTextStyles.label.copyWith(fontSize: 9),
+                        ),
+                        CountUpText(
+                          value: summary.totalAmount,
+                          style: AppTextStyles.bodyMd.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
-              );
-            }).toList(),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: shown.map((e) {
+                    final percentage = summary.totalAmount > 0
+                        ? (e.value / summary.totalAmount) * 100
+                        : 0.0;
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: e.key.color,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              e.key.displayName,
+                              style: AppTextStyles.bodySm,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            "${percentage.toStringAsFixed(0)}%",
+                            style: AppTextStyles.bodySm.copyWith(
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildStatItem(String label, String value, Color valueColor) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: AppTextStyles.label),
-        const SizedBox(height: 4),
-        Text(value, style: AppTextStyles.h2.copyWith(color: valueColor)),
-      ],
     );
   }
 }

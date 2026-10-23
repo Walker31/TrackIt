@@ -23,11 +23,18 @@ class ExerciseGrid extends StatelessWidget {
         child: Center(
           child: Column(
             children: [
-              const Icon(Icons.fitness_center, size: 48, color: AppColors.textTertiary),
+              Icon(
+                Icons.fitness_center,
+                size: 48,
+                color: AppColors.textTertiary,
+              ),
               const SizedBox(height: 16),
               Text("No exercises added yet.", style: AppTextStyles.bodyLg),
               const SizedBox(height: 8),
-              const Text("Tap the + button to start tracking.", style: AppTextStyles.bodySm),
+              const Text(
+                "Tap the + button to start tracking.",
+                style: AppTextStyles.bodySm,
+              ),
             ],
           ),
         ),
@@ -53,19 +60,36 @@ class ExerciseGrid extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: isSelected ? AppColors.primary : AppColors.surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: isSelected ? AppColors.primary : Colors.white10),
+                  border: Border.all(
+                    color: isSelected
+                        ? AppColors.primary
+                        : Colors.black.withValues(alpha: 0.06),
+                  ),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(exercise.name, style: AppTextStyles.bodyMd.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: isSelected ? Colors.white : AppColors.textPrimary,
-                    ), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(
+                      exercise.name,
+                      style: AppTextStyles.bodyMd.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: isSelected
+                            ? Colors.white
+                            : AppColors.textPrimary,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     const SizedBox(height: 4),
-                    Text("${exercise.getCompletedSetsCount()}/${exercise.sets.length}", style: AppTextStyles.bodySm.copyWith(
-                      color: isSelected ? Colors.white70 : AppColors.textSecondary,
-                    )),
+                    Text(
+                      "${exercise.getCompletedSetsCount()}/${exercise.sets.length}",
+                      style: AppTextStyles.bodySm.copyWith(
+                        color: isSelected
+                            ? Colors.white70
+                            : AppColors.textSecondary,
+                      ),
+                    ),
                   ],
                 ),
               ),

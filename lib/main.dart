@@ -1,23 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:trackit/router.dart';
+import 'package:trackit/services/app_mode_service.dart';
 import 'package:trackit/services/database_service.dart';
-import 'package:provider/provider.dart';
-import 'package:trackit/providers/expense_provider.dart';
-import 'package:trackit/providers/workout_provider.dart';
+import 'package:trackit/providers/app_providers.dart';
 import 'package:trackit/services/notification_service.dart';
 
 import 'theme/app_theme.dart';
+import 'theme/app_colors.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize services
   await DatabaseService.initialize();
-  
+
   // Initialize database before running the app
   await DatabaseService().getDatabase();
+  await AppModeService().load();
   await NotificationService().initialize();
-  
+
   // Schedule a daily check-in reminder (e.g., at 8 PM)
   NotificationService().scheduleDailyReminder(
     id: 1,
@@ -26,29 +28,34 @@ void main() async {
     hour: 20,
     minute: 0,
   );
-  
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => ExpenseProvider()),
-        ChangeNotifierProvider(create: (_) => WorkoutProvider()),
-      ],
-      child: const App(),
-    ),
-  );
+
+  runApp(const ProviderScope(child: App()));
 }
 
-class App extends StatelessWidget {
+class App extends ConsumerWidget {
   const App({super.key});
 
   // This widget is the root of your application.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final goRouter = ref.watch(routerProvider);
+    final themeMode = ref.watch(themeModeProvider);
+
+    final platformBrightness = MediaQuery.platformBrightnessOf(context);
+    final effectiveBrightness = switch (themeMode) {
+      ThemeMode.light => Brightness.light,
+      ThemeMode.dark => Brightness.dark,
+      ThemeMode.system => platformBrightness,
+    };
+    AppColors.sync(effectiveBrightness);
+
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
       title: 'TrackIt',
-      theme: AppTheme.darkTheme,
-      routerConfig: router,
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: themeMode,
+      routerConfig: goRouter,
     );
   }
 }

@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/workouts.dart';
 import '../services/workout_service.dart';
+import '../services/sync_service.dart';
 
 class WorkoutProvider extends ChangeNotifier {
   final WorkoutService _service = WorkoutService();
-  
+
   Workout? _todayWorkout;
   List<Routine> _routines = [];
   bool _isLoading = false;
@@ -14,7 +15,7 @@ class WorkoutProvider extends ChangeNotifier {
   // Rest Timer State
   int _restTimeRemaining = 0;
   Timer? _restTimer;
-  int _totalRestTime = 60; // Default 60 seconds
+  final int _totalRestTime = 60; // Default 60 seconds
 
   Workout? get todayWorkout => _todayWorkout;
   List<Routine> get routines => _routines;
@@ -54,16 +55,19 @@ class WorkoutProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      await SyncService().performSync();
       final now = DateTime.now();
       final workouts = await _service.getWorkoutsByDate(now);
       if (workouts.isNotEmpty) {
         _todayWorkout = workouts.first;
       } else {
-        _todayWorkout = await _service.addWorkout(Workout(
-          type: WorkoutType.push,
-          timestamp: now,
-          notes: 'Daily Session',
-        ));
+        _todayWorkout = await _service.addWorkout(
+          Workout(
+            type: WorkoutType.push,
+            timestamp: now,
+            notes: 'Daily Session',
+          ),
+        );
       }
       _routines = await _service.getAllRoutines();
     } catch (e) {

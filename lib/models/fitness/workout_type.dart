@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 
 enum WorkoutType {
   push('Push', 'Upper body pushing movements', Color(0xFF6366F1), Icons.upload),
-  pull('Pull', 'Upper body pulling movements', Color(0xFF8B5CF6), Icons.download),
+  pull(
+    'Pull',
+    'Upper body pulling movements',
+    Color(0xFF8B5CF6),
+    Icons.download,
+  ),
   legs('Legs', 'Lower body movements', Color(0xFF10B981), Icons.fitness_center);
 
   final String displayName;

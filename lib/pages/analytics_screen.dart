@@ -41,7 +41,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     future: _expenseService.getWeeklyExpenseData(),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const AppCard(child: Center(child: CircularProgressIndicator(color: AppColors.primary)));
+                        return const AppCard(
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        );
                       }
                       return SpendingChart(data: snapshot.data ?? {});
                     },
@@ -56,7 +62,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     future: _workoutService.getWeeklyVolumeData(),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const AppCard(child: Center(child: CircularProgressIndicator(color: AppColors.primary)));
+                        return const AppCard(
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: AppColors.primary,
+                            ),
+                          ),
+                        );
                       }
                       return VolumeChart(data: snapshot.data ?? {});
                     },
@@ -71,12 +83,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   Widget _buildAppBar() {
-    return const SliverAppBar(
+    return SliverAppBar(
       expandedHeight: 120,
       floating: false,
       pinned: true,
-      backgroundColor: AppColors.background,
-      flexibleSpace: FlexibleSpaceBar(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      flexibleSpace: const FlexibleSpaceBar(
         titlePadding: EdgeInsets.only(left: 20, bottom: 16),
         centerTitle: false,
         title: Text("Analytics", style: AppTextStyles.h2),

@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../providers/auth_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 
-class SplashScreen extends StatefulWidget {
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
+class _SplashScreenState extends ConsumerState<SplashScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -18,7 +20,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
-    
+
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
@@ -34,9 +36,37 @@ class _SplashScreenState extends State<SplashScreen>
 
     _animationController.forward();
 
-    Future.delayed(const Duration(seconds: 4), () {
+    // Wait for auth status to be determined
+    Future.microtask(() {
+      _checkAuthAndNavigate();
+    });
+  }
+
+  void _checkAuthAndNavigate() {
+    final authState = ref.read(authProvider).state;
+    if (authState.status != AuthStatus.initial) {
+      _navigateToNext(authState.status);
+    } else {
+      // Listen for changes
+      ref.listenManual(authProvider, (previous, next) {
+        if (next.state.status != AuthStatus.initial) {
+          _navigateToNext(next.state.status);
+        }
+      });
+    }
+  }
+
+  void _navigateToNext(AuthStatus status) {
+    if (!mounted) return;
+
+    // Give a small delay for the animation to feel good
+    Future.delayed(const Duration(milliseconds: 1500), () {
       if (mounted) {
-        GoRouter.of(context).go('/home');
+        if (status == AuthStatus.authenticated || status == AuthStatus.local) {
+          context.go('/home');
+        } else {
+          context.go('/login');
+        }
       }
     });
   }
@@ -50,27 +80,29 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.background,
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 500),
           child: Stack(
             children: [
               // Background Gradient
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  gradient: RadialGradient(
-                    center: Alignment.center,
-                    radius: 1.5,
-                    colors: [
-                      AppColors.primary.withValues(alpha: 0.1),
-                      AppColors.background,
-                    ],
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.background,
+                    gradient: RadialGradient(
+                      center: Alignment.center,
+                      radius: 1.5,
+                      colors: [
+                        AppColors.primary.withValues(alpha: 0.1),
+                        AppColors.background,
+                      ],
+                    ),
                   ),
                 ),
               ),
-              
+
               Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -95,7 +127,11 @@ class _SplashScreenState extends State<SplashScreen>
                             ],
                           ),
                           child: const Center(
-                            child: Icon(Icons.track_changes, color: Colors.white, size: 60),
+                            child: Icon(
+                              Icons.track_changes,
+                              color: Colors.white,
+                              size: 60,
+                            ),
                           ),
                         ),
                       ),
@@ -107,17 +143,19 @@ class _SplashScreenState extends State<SplashScreen>
                       opacity: _fadeAnimation,
                       child: Column(
                         children: [
-                          const Text(
-                            'TrackIT',
-                            style: AppTextStyles.h1,
-                          ),
+                          const Text('TrackIT', style: AppTextStyles.h1),
                           const SizedBox(height: 12),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: AppColors.surface,
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                              border: Border.all(
+                                color: AppColors.primary.withValues(alpha: 0.3),
+                              ),
                             ),
                             child: const Text(
                               'MASTER YOUR LIFESTYLE',

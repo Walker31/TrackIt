@@ -18,7 +18,9 @@ class Exercise {
   });
 
   double getTotalVolume() {
-    return sets.where((s) => s.isCompleted).fold(0, (sum, s) => sum + (s.weight * s.reps));
+    return sets
+        .where((s) => s.isCompleted)
+        .fold(0, (sum, s) => sum + (s.weight * s.reps));
   }
 
   double getCompletionPercentage() {
@@ -34,19 +36,25 @@ class Exercise {
   Map<String, dynamic> toMap() {
     return {
       if (id != null) 'id': id,
-      'workout_id': workoutId,
+      'workout': workoutId, // Django field name
       'name': name,
       'muscle_group': muscleGroup,
+      'sets': sets.map((s) => s.toMap()).toList(),
     };
   }
 
   factory Exercise.fromMap(Map<String, dynamic> map) {
     return Exercise(
       id: map['id'] as int?,
-      workoutId: map['workout_id'] as int,
+      workoutId: map['workout'] as int, // Django uses the field name 'workout'
       name: map['name'] as String,
       muscleGroup: map['muscle_group'] as String,
-      createdAt: map['created_at'] != null ? DateTime.parse(map['created_at'] as String) : null,
+      createdAt: map['created_at'] != null
+          ? DateTime.parse(map['created_at'] as String)
+          : null,
+      sets: map['sets'] != null
+          ? (map['sets'] as List).map((s) => SetData.fromMap(s)).toList()
+          : [],
     );
   }
 

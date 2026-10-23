@@ -1,37 +1,42 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/section_header.dart';
 import '../models/workouts.dart';
-import '../providers/workout_provider.dart';
+import '../providers/app_providers.dart';
 import '../widgets/workouts/session_summary_card.dart';
 import '../widgets/workouts/routine_selector.dart';
 import '../widgets/workouts/exercise_grid.dart';
 import '../widgets/workouts/active_exercise_tracker.dart';
 import '../widgets/workouts/rest_timer_overlay.dart';
 import '../widgets/app_button.dart';
+import '../widgets/app_snackbar.dart';
 import '../widgets/glass_container.dart';
 
-class WorkoutsScreen extends StatefulWidget {
+class WorkoutsScreen extends ConsumerStatefulWidget {
   const WorkoutsScreen({super.key});
 
   @override
-  State<WorkoutsScreen> createState() => _WorkoutsScreenState();
+  ConsumerState<WorkoutsScreen> createState() => _WorkoutsScreenState();
 }
 
-class _WorkoutsScreenState extends State<WorkoutsScreen> {
+class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
   int? _selectedExerciseIndex = 0;
   double _weight = 80;
   int _reps = 10;
 
   @override
   Widget build(BuildContext context) {
-    final provider = context.watch<WorkoutProvider>();
+    final provider = ref.watch(workoutProviderProvider);
     final workout = provider.todayWorkout;
 
     if (workout == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator(color: AppColors.primary)));
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
     }
 
     return Scaffold(
@@ -62,18 +67,21 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
                       ExerciseGrid(
                         workout: workout,
                         selectedIndex: _selectedExerciseIndex ?? 0,
-                        onSelect: (index) => _onExerciseSelected(workout, index),
+                        onSelect: (index) =>
+                            _onExerciseSelected(workout, index),
                       ),
                       const SizedBox(height: 32),
                       if (workout.exercises.isNotEmpty) ...[
                         ActiveExerciseTracker(
-                          exercise: workout.exercises[_selectedExerciseIndex ?? 0],
+                          exercise:
+                              workout.exercises[_selectedExerciseIndex ?? 0],
                           provider: provider,
                           weight: _weight,
                           reps: _reps,
                           onWeightDec: () => setState(() => _weight -= 2.5),
                           onWeightInc: () => setState(() => _weight += 2.5),
-                          onRepsDec: () => setState(() => _reps > 0 ? _reps-- : 0),
+                          onRepsDec: () =>
+                              setState(() => _reps > 0 ? _reps-- : 0),
                           onRepsInc: () => setState(() => _reps++),
                         ),
                         const SizedBox(height: 24),
@@ -110,7 +118,7 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
       expandedHeight: 120,
       floating: false,
       pinned: true,
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       flexibleSpace: FlexibleSpaceBar(
         titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
         centerTitle: false,
@@ -119,7 +127,7 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
       actions: [
         IconButton(
           onPressed: () {},
-          icon: const Icon(Icons.settings_outlined, color: AppColors.textSecondary),
+          icon: Icon(Icons.settings_outlined, color: AppColors.textSecondary),
         ),
         const SizedBox(width: 8),
       ],
@@ -130,7 +138,9 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
     setState(() {
       _selectedExerciseIndex = index;
       final exercise = workout.exercises[index];
-      final nextSet = exercise.sets.where((s) => !s.isCompleted).firstOrNull ?? exercise.sets.lastOrNull;
+      final nextSet =
+          exercise.sets.where((s) => !s.isCompleted).firstOrNull ??
+          exercise.sets.lastOrNull;
       if (nextSet != null && nextSet.weight > 0) {
         _weight = nextSet.weight;
         _reps = nextSet.reps;
@@ -145,48 +155,83 @@ class _WorkoutsScreenState extends State<WorkoutsScreen> {
       children: [
         Text("SET HISTORY", style: AppTextStyles.label),
         const SizedBox(height: 12),
-        ...exercise.sets.map((set) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: set.isCompleted ? AppColors.surfaceVariant : AppColors.surface,
-                  shape: BoxShape.circle,
+        ...exercise.sets.map(
+          (set) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: set.isCompleted
+                        ? AppColors.surfaceVariant
+                        : AppColors.surface,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      "${set.setNumber}",
+                      style: AppTextStyles.bodySm,
+                    ),
+                  ),
                 ),
-                child: Center(child: Text("${set.setNumber}", style: AppTextStyles.bodySm)),
-              ),
-              const SizedBox(width: 16),
-              Text("${set.weight}kg x ${set.reps}", style: AppTextStyles.bodyMd),
-              const Spacer(),
-              Icon(set.isCompleted ? Icons.check_circle : Icons.circle_outlined, 
-                color: set.isCompleted ? AppColors.secondary : AppColors.textTertiary, size: 20),
-            ],
+                const SizedBox(width: 16),
+                Text(
+                  "${set.weight}kg x ${set.reps}",
+                  style: AppTextStyles.bodyMd,
+                ),
+                const Spacer(),
+                Icon(
+                  set.isCompleted ? Icons.check_circle : Icons.circle_outlined,
+                  color: set.isCompleted
+                      ? AppColors.secondary
+                      : AppColors.textTertiary,
+                  size: 20,
+                ),
+              ],
+            ),
           ),
-        )).toList(),
+        ),
       ],
     );
   }
 
   void _showAddExerciseSheet(BuildContext context) {
-    final provider = context.read<WorkoutProvider>();
+    final provider = ref.read(workoutProviderProvider);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _AddExerciseSheet(onAdd: provider.addExercise),
+      builder: (context) => _AddExerciseSheet(
+        onAdd: (exercise) {
+          provider.addExercise(exercise);
+          AppSnackbar.success(
+            this.context,
+            '${exercise.name} added to today\'s workout.',
+            aboveNav: true,
+          );
+        },
+      ),
     );
   }
 
   void _showCreateRoutineSheet(BuildContext context) {
-    final provider = context.read<WorkoutProvider>();
+    final provider = ref.read(workoutProviderProvider);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _CreateRoutineSheet(onSave: provider.addRoutine),
+      builder: (context) => _CreateRoutineSheet(
+        onSave: (routine) {
+          provider.addRoutine(routine);
+          AppSnackbar.success(
+            this.context,
+            'Routine "${routine.name}" created.',
+            aboveNav: true,
+          );
+        },
+      ),
     );
   }
 }
@@ -221,11 +266,8 @@ class _CreateRoutineSheetState extends State<_CreateRoutineSheet> {
           const SizedBox(height: 24),
           TextField(
             controller: _nameController,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               hintText: "Routine Name (e.g. Upper Body A)",
-              filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.05),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
             ),
           ),
           const SizedBox(height: 24),
@@ -239,9 +281,12 @@ class _CreateRoutineSheetState extends State<_CreateRoutineSheet> {
                 child: ChoiceChip(
                   label: Text(type.displayName),
                   selected: isSelected,
+                  showCheckmark: false,
                   onSelected: (_) => setState(() => _selectedType = type),
                   selectedColor: type.color.withValues(alpha: 0.2),
-                  labelStyle: TextStyle(color: isSelected ? type.color : Colors.white70),
+                  labelStyle: TextStyle(
+                    color: isSelected ? type.color : AppColors.textSecondary,
+                  ),
                 ),
               );
             }).toList(),
@@ -251,11 +296,13 @@ class _CreateRoutineSheetState extends State<_CreateRoutineSheet> {
             text: "Create Routine",
             onPressed: () {
               if (_nameController.text.isNotEmpty) {
-                widget.onSave(Routine(
-                  name: _nameController.text,
-                  type: _selectedType,
-                  exercises: [],
-                ));
+                widget.onSave(
+                  Routine(
+                    name: _nameController.text,
+                    type: _selectedType,
+                    exercises: [],
+                  ),
+                );
                 Navigator.pop(context);
               }
             },
@@ -297,21 +344,15 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
           const SizedBox(height: 24),
           TextField(
             controller: _nameController,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               hintText: "Exercise Name (e.g. Bench Press)",
-              filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.05),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
             ),
           ),
           const SizedBox(height: 16),
           TextField(
             controller: _muscleController,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               hintText: "Muscle Group (e.g. Chest)",
-              filled: true,
-              fillColor: Colors.white.withValues(alpha: 0.05),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
             ),
           ),
           const SizedBox(height: 24),
@@ -321,9 +362,16 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
               const Text("Sets", style: AppTextStyles.bodyLg),
               Row(
                 children: [
-                  IconButton(onPressed: () => setState(() => _setsCount > 1 ? _setsCount-- : 1), icon: const Icon(Icons.remove)),
+                  IconButton(
+                    onPressed: () =>
+                        setState(() => _setsCount > 1 ? _setsCount-- : 1),
+                    icon: const Icon(Icons.remove),
+                  ),
                   Text("$_setsCount", style: AppTextStyles.h3),
-                  IconButton(onPressed: () => setState(() => _setsCount++), icon: const Icon(Icons.add)),
+                  IconButton(
+                    onPressed: () => setState(() => _setsCount++),
+                    icon: const Icon(Icons.add),
+                  ),
                 ],
               ),
             ],
@@ -337,12 +385,15 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
                   workoutId: 0,
                   name: _nameController.text,
                   muscleGroup: _muscleController.text,
-                  sets: List.generate(_setsCount, (i) => SetData(
-                    exerciseId: 0,
-                    setNumber: i + 1,
-                    weight: 0,
-                    reps: 0,
-                  )),
+                  sets: List.generate(
+                    _setsCount,
+                    (i) => SetData(
+                      exerciseId: 0,
+                      setNumber: i + 1,
+                      weight: 0,
+                      reps: 0,
+                    ),
+                  ),
                 );
                 widget.onAdd(exercise);
                 Navigator.pop(context);

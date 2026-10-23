@@ -1,7 +1,13 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models/expenses.dart';
+import '../theme/app_colors.dart';
 
-class DonutChart extends StatelessWidget {
+/// A donut chart of category spend, animating its arcs in on first paint.
+/// Segments get a small gap between them (dataviz mark spec: a visible
+/// surface gap between adjacent fills) so slices read as distinct even
+/// before color is considered.
+class DonutChart extends StatefulWidget {
   final Map<ExpenseCategory, double> categoryTotals;
   final double totalAmount;
   final double size;
@@ -14,10 +20,47 @@ class DonutChart extends StatelessWidget {
   });
 
   @override
+  State<DonutChart> createState() => _DonutChartState();
+}
+
+class _DonutChartState extends State<DonutChart>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      size: Size(size, size),
-      painter: DonutChartPainter(categoryTotals, totalAmount),
+    final curved = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
+    return AnimatedBuilder(
+      animation: curved,
+      builder: (context, _) {
+        return CustomPaint(
+          size: Size(widget.size, widget.size),
+          painter: DonutChartPainter(
+            widget.categoryTotals,
+            widget.totalAmount,
+            progress: curved.value,
+            emptyColor: AppColors.surfaceVariant,
+          ),
+        );
+      },
     );
   }
 }
@@ -25,8 +68,17 @@ class DonutChart extends StatelessWidget {
 class DonutChartPainter extends CustomPainter {
   final Map<ExpenseCategory, double> categoryTotals;
   final double totalAmount;
+  final double progress;
+  final Color emptyColor;
 
-  DonutChartPainter(this.categoryTotals, this.totalAmount);
+  DonutChartPainter(
+    this.categoryTotals,
+    this.totalAmount, {
+    this.progress = 1.0,
+    required this.emptyColor,
+  });
+
+  static const double _gapRadians = 0.045;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -39,29 +91,37 @@ class DonutChartPainter extends CustomPainter {
     final radius = (size.width / 2) - (paint.strokeWidth / 2);
 
     if (totalAmount == 0) {
-      paint.color = Colors.grey.withValues(alpha:0.1);
+      paint.color = emptyColor;
       canvas.drawCircle(center, radius, paint);
       return;
     }
 
-    double startAngle = -1.5708; // -90 degrees
+    double startAngle = -math.pi / 2;
+    const fullSweep = 2 * math.pi;
 
     categoryTotals.forEach((category, amount) {
-      final sweepAngle = (amount / totalAmount) * (2 * 3.14159265359);
+      final rawSweep = (amount / totalAmount) * fullSweep;
+      final sweepAngle =
+          (rawSweep - _gapRadians).clamp(0.0, fullSweep) * progress;
       paint.color = category.color;
-      
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        startAngle,
-        sweepAngle,
-        false,
-        paint,
-      );
-      
-      startAngle += sweepAngle;
+
+      if (sweepAngle > 0) {
+        canvas.drawArc(
+          Rect.fromCircle(center: center, radius: radius),
+          startAngle,
+          sweepAngle,
+          false,
+          paint,
+        );
+      }
+
+      startAngle += rawSweep;
     });
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant DonutChartPainter oldDelegate) =>
+      oldDelegate.progress != progress ||
+      oldDelegate.categoryTotals != categoryTotals ||
+      oldDelegate.totalAmount != totalAmount;
 }
