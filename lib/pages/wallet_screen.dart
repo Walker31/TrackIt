@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../theme/responsive.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/app_snackbar.dart';
+import '../widgets/page_header.dart';
 import '../widgets/section_header.dart';
 import '../widgets/glass_container.dart';
 import '../providers/app_providers.dart';
@@ -46,10 +48,15 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          _buildAppBar(),
+          const SliverToBoxAdapter(child: PageHeader(title: 'Wallet')),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                Responsive.pageBottomPadding(context),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -64,6 +71,10 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                     duration: const Duration(milliseconds: 260),
                     switchInCurve: Curves.easeOut,
                     switchOutCurve: Curves.easeIn,
+                    layoutBuilder: (current, previous) => Stack(
+                      alignment: Alignment.topLeft,
+                      children: [...previous, ?current],
+                    ),
                     transitionBuilder: (child, animation) => FadeTransition(
                       opacity: animation,
                       child: SlideTransition(
@@ -75,10 +86,10 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                       ),
                     ),
                     child: _tab == _WalletTab.personal
-                        ? Column(
+                        ? ResponsiveColumns(
                             key: const ValueKey('personal'),
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
+                            gap: 40,
+                            left: [
                               SectionHeader(
                                 title: "Financial Analysis",
                                 subtitle: "Monthly Spending",
@@ -92,7 +103,8 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                               ),
                               const SizedBox(height: 24),
                               BudgetsCard(provider: provider),
-                              const SizedBox(height: 40),
+                            ],
+                            right: [
                               const SectionHeader(
                                 title: "Transactions",
                                 subtitle: "History",
@@ -134,7 +146,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
         ],
       ),
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 90),
+        padding: EdgeInsets.only(bottom: Responsive.navInset(context)),
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 220),
           transitionBuilder: (child, animation) =>
@@ -164,34 +176,6 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                 ),
         ),
       ),
-    );
-  }
-
-  Widget _buildAppBar() {
-    return SliverAppBar(
-      expandedHeight: 120,
-      floating: false,
-      pinned: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      flexibleSpace: FlexibleSpaceBar(
-        titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
-        centerTitle: false,
-        title: const Text("Wallet", style: AppTextStyles.h2),
-      ),
-      actions: [
-        IconButton(
-          onPressed: () => switch (_tab) {
-            _WalletTab.personal => _showAddExpenseSheet(context),
-            _WalletTab.trips => _createTrip(),
-            _WalletTab.events => _showCreateGroupSheet(context),
-          },
-          icon: const Icon(
-            Icons.add_circle_outline,
-            color: AppColors.secondary,
-          ),
-        ),
-        const SizedBox(width: 8),
-      ],
     );
   }
 

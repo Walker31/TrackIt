@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
-import '../theme/app_text_styles.dart';
+import 'animated/tap_scale.dart';
 
+/// Flat button: solid fill when primary, hairline outline otherwise.
 class AppButton extends StatelessWidget {
   final String text;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final IconData? icon;
   final bool isPrimary;
   final bool isFullWidth;
+  final bool isLoading;
   final Color? color;
 
   const AppButton({
@@ -17,59 +19,74 @@ class AppButton extends StatelessWidget {
     this.icon,
     this.isPrimary = true,
     this.isFullWidth = true,
+    this.isLoading = false,
     this.color,
   });
 
   @override
   Widget build(BuildContext context) {
+    final accent = color ?? AppColors.primary;
     final contentColor = isPrimary ? Colors.white : AppColors.textPrimary;
+    final enabled = onPressed != null && !isLoading;
+    final isDark = AppColors.isDark;
 
-    final buttonContent = Row(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        if (icon != null) ...[
-          Icon(icon, size: 20, color: contentColor),
-          const SizedBox(width: 8),
-        ],
-        Text(
-          text.toUpperCase(),
-          style: AppTextStyles.label.copyWith(color: contentColor),
-        ),
-      ],
-    );
+    final content = isLoading
+        ? SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: contentColor,
+            ),
+          )
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: 18, color: contentColor),
+                const SizedBox(width: 8),
+              ],
+              Text(
+                text,
+                style: TextStyle(
+                  color: contentColor,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          );
 
     return SizedBox(
       width: isFullWidth ? double.infinity : null,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: isPrimary
-              ? (color != null
-                    ? LinearGradient(
-                        colors: [color!, color!.withValues(alpha: 0.8)],
-                      )
-                    : AppColors.primaryGradient)
-              : null,
-          color: isPrimary ? null : AppColors.surfaceVariant,
-          boxShadow: isPrimary
-              ? [
-                  BoxShadow(
-                    color: (color ?? AppColors.primary).withValues(alpha: 0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : null,
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onPressed,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-              child: buttonContent,
+      child: PressScale(
+        enabled: enabled,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 150),
+          opacity: onPressed == null ? 0.5 : 1,
+          child: Material(
+            color: isPrimary ? accent : Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: isPrimary
+                  ? BorderSide.none
+                  : BorderSide(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.14)
+                          : Colors.black.withValues(alpha: 0.12),
+                    ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: enabled ? onPressed : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 15,
+                  horizontal: 24,
+                ),
+                child: Center(child: content),
+              ),
             ),
           ),
         ),

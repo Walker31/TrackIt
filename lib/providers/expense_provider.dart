@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/expenses.dart';
@@ -20,8 +21,19 @@ class ExpenseProvider extends ChangeNotifier {
   double get monthlyBudget => _monthlyBudget;
   bool get isLoading => _isLoading;
 
+  StreamSubscription<void>? _syncSub;
+
   ExpenseProvider() {
+    // Background syncs (started by writes) land after the screen has read
+    // the database; reload whenever one completes.
+    _syncSub = SyncService().onSyncComplete.listen((_) => _reload());
     refreshData();
+  }
+
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    super.dispose();
   }
 
   Future<void> refreshData() async {
@@ -30,6 +42,16 @@ class ExpenseProvider extends ChangeNotifier {
 
     try {
       await SyncService().performSync();
+      await _reload(notify: false);
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Re-read today's and this month's figures from the local database.
+  Future<void> _reload({bool notify = true}) async {
+    try {
       final now = DateTime.now();
       _expenses = await _service.getExpensesByDate(now);
       _todaySummary = await _service.getDailySummary(now);
@@ -37,10 +59,8 @@ class ExpenseProvider extends ChangeNotifier {
       _monthlyBudget = await _service.getMonthlyBudget();
     } catch (e) {
       debugPrint('Error refreshing expenses: $e');
-    } finally {
-      _isLoading = false;
-      notifyListeners();
     }
+    if (notify) notifyListeners();
   }
 
   Future<void> addExpense(Expense expense) async {

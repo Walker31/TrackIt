@@ -43,10 +43,18 @@ class Exercise {
     };
   }
 
+  /// Nested payload for [Workout.toApi]; the server sets `workout`.
+  Map<String, dynamic> toApi() => {
+    'name': name,
+    'muscle_group': muscleGroup,
+    'sets': sets.map((s) => s.toApi()).toList(),
+  };
+
   factory Exercise.fromMap(Map<String, dynamic> map) {
     return Exercise(
       id: map['id'] as int?,
-      workoutId: map['workout'] as int, // Django uses the field name 'workout'
+      // Django uses 'workout'; the local SQLite column is 'workout_id'.
+      workoutId: (map['workout'] ?? map['workout_id']) as int,
       name: map['name'] as String,
       muscleGroup: map['muscle_group'] as String,
       createdAt: map['created_at'] != null

@@ -46,8 +46,20 @@ class WorkoutProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  StreamSubscription<void>? _syncSub;
+
   WorkoutProvider() {
+    // Background syncs (started by writes) land after the screen has read
+    // the database; reload whenever one completes.
+    _syncSub = SyncService().onSyncComplete.listen((_) => _reload());
     refreshData();
+  }
+
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    _restTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> refreshData() async {
@@ -56,26 +68,38 @@ class WorkoutProvider extends ChangeNotifier {
 
     try {
       await SyncService().performSync();
-      final now = DateTime.now();
-      final workouts = await _service.getWorkoutsByDate(now);
-      if (workouts.isNotEmpty) {
-        _todayWorkout = workouts.first;
-      } else {
-        _todayWorkout = await _service.addWorkout(
-          Workout(
-            type: WorkoutType.push,
-            timestamp: now,
-            notes: 'Daily Session',
-          ),
-        );
-      }
-      _routines = await _service.getAllRoutines();
-    } catch (e) {
-      debugPrint('Error refreshing workouts: $e');
+      await _reload(notify: false);
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Re-read today's session and routines from the local database.
+  Future<void> _reload({bool notify = true}) async {
+    try {
+      final now = DateTime.now();
+      final workouts = await _service.getWorkoutsByDate(now);
+      // With nothing logged yet, show an unsaved session. It's written on
+      // the first exercise, so opening the app never creates (and syncs)
+      // an empty workout, or a duplicate of one still being pulled.
+      // Prefer a session with exercises over an empty one (older builds
+      // created an empty session on every fresh start).
+      _todayWorkout = workouts.isNotEmpty
+          ? workouts.firstWhere(
+              (w) => w.exercises.isNotEmpty,
+              orElse: () => workouts.first,
+            )
+          : Workout(
+              type: WorkoutType.push,
+              timestamp: now,
+              notes: 'Daily Session',
+            );
+      _routines = await _service.getAllRoutines();
+    } catch (e) {
+      debugPrint('Error refreshing workouts: $e');
+    }
+    if (notify) notifyListeners();
   }
 
   Future<void> addRoutine(Routine routine) async {
@@ -89,7 +113,16 @@ class WorkoutProvider extends ChangeNotifier {
   }
 
   Future<void> addExercise(Exercise exercise) async {
-    await _service.addExercise(exercise);
+    var workout = _todayWorkout;
+    if (workout == null) return;
+    if (workout.id == null) {
+      // First exercise of the day: save the placeholder session now.
+      workout = await _service.addWorkout(
+        workout.copyWith(timestamp: DateTime.now()),
+      );
+      _todayWorkout = workout;
+    }
+    await _service.addExercise(exercise.copyWith(workoutId: workout.id));
     await refreshData();
   }
 

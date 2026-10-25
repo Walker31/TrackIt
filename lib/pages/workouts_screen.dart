@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../theme/responsive.dart';
+import '../widgets/animated/fade_slide_in.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
+import 'package:go_router/go_router.dart';
+import '../widgets/page_header.dart';
 import '../widgets/section_header.dart';
 import '../models/workouts.dart';
 import '../providers/app_providers.dart';
@@ -45,44 +49,75 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
           CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
-              _buildAppBar(),
+              SliverToBoxAdapter(
+                child: PageHeader(
+                  title: 'Training',
+                  trailing: IconButton(
+                    onPressed: () => context.push('/settings'),
+                    icon: Icon(
+                      Icons.settings_outlined,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SessionSummaryCard(workout: workout),
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    20,
+                    20,
+                    Responsive.pageBottomPadding(context),
+                  ),
+                  child: ResponsiveColumns(
+                    gap: 40,
+                    left: [
+                      FadeSlideIn(child: SessionSummaryCard(workout: workout)),
                       const SizedBox(height: 32),
-                      RoutineSelector(
-                        provider: provider,
-                        onCreateRoutine: () => _showCreateRoutineSheet(context),
+                      FadeSlideIn(
+                        index: 1,
+                        child: RoutineSelector(
+                          provider: provider,
+                          onCreateRoutine: () =>
+                              _showCreateRoutineSheet(context),
+                        ),
                       ),
-                      const SizedBox(height: 40),
-                      const SectionHeader(
-                        title: "Active Exercises",
-                        subtitle: "Workout Progress",
+                    ],
+                    right: [
+                      const FadeSlideIn(
+                        index: 2,
+                        child: SectionHeader(
+                          title: "Active Exercises",
+                          subtitle: "Workout Progress",
+                        ),
                       ),
                       const SizedBox(height: 16),
-                      ExerciseGrid(
-                        workout: workout,
-                        selectedIndex: _selectedExerciseIndex ?? 0,
-                        onSelect: (index) =>
-                            _onExerciseSelected(workout, index),
+                      FadeSlideIn(
+                        index: 3,
+                        child: ExerciseGrid(
+                          workout: workout,
+                          selectedIndex: _selectedExerciseIndex ?? 0,
+                          onSelect: (index) =>
+                              _onExerciseSelected(workout, index),
+                        ),
                       ),
                       const SizedBox(height: 32),
                       if (workout.exercises.isNotEmpty) ...[
-                        ActiveExerciseTracker(
-                          exercise:
-                              workout.exercises[_selectedExerciseIndex ?? 0],
-                          provider: provider,
-                          weight: _weight,
-                          reps: _reps,
-                          onWeightDec: () => setState(() => _weight -= 2.5),
-                          onWeightInc: () => setState(() => _weight += 2.5),
-                          onRepsDec: () =>
-                              setState(() => _reps > 0 ? _reps-- : 0),
-                          onRepsInc: () => setState(() => _reps++),
+                        // Re-run the entrance when switching exercises.
+                        FadeSlideIn(
+                          key: ValueKey(_selectedExerciseIndex ?? 0),
+                          child: ActiveExerciseTracker(
+                            exercise:
+                                workout.exercises[_selectedExerciseIndex ?? 0],
+                            provider: provider,
+                            weight: _weight,
+                            reps: _reps,
+                            onWeightDec: () => setState(() => _weight -= 2.5),
+                            onWeightInc: () => setState(() => _weight += 2.5),
+                            onRepsDec: () =>
+                                setState(() => _reps > 0 ? _reps-- : 0),
+                            onRepsInc: () => setState(() => _reps++),
+                          ),
                         ),
                         const SizedBox(height: 24),
                         _buildSetHistory(workout),
@@ -93,44 +128,39 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
               ),
             ],
           ),
-          if (provider.isTimerRunning)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 10,
-              left: 20,
-              right: 20,
-              child: RestTimerOverlay(provider: provider),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 10,
+            left: 20,
+            right: 20,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              switchInCurve: Curves.easeOutBack,
+              switchOutCurve: Curves.easeIn,
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, -0.6),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
+              ),
+              child: provider.isTimerRunning
+                  ? RestTimerOverlay(provider: provider)
+                  : const SizedBox.shrink(),
             ),
+          ),
         ],
       ),
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 90),
+        padding: EdgeInsets.only(bottom: Responsive.navInset(context)),
         child: FloatingActionButton(
           onPressed: () => _showAddExerciseSheet(context),
           backgroundColor: AppColors.primary,
           child: const Icon(Icons.add),
         ),
       ),
-    );
-  }
-
-  Widget _buildAppBar() {
-    return SliverAppBar(
-      expandedHeight: 120,
-      floating: false,
-      pinned: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      flexibleSpace: FlexibleSpaceBar(
-        titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
-        centerTitle: false,
-        title: const Text("Training", style: AppTextStyles.h2),
-      ),
-      actions: [
-        IconButton(
-          onPressed: () {},
-          icon: Icon(Icons.settings_outlined, color: AppColors.textSecondary),
-        ),
-        const SizedBox(width: 8),
-      ],
     );
   }
 

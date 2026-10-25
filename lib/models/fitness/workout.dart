@@ -56,6 +56,15 @@ class Workout {
     };
   }
 
+  /// Payload for POSTing to the backend. Local ids are left out: the server
+  /// assigns its own and links nested exercises and sets itself.
+  Map<String, dynamic> toApi() => {
+    'type': type.name,
+    'timestamp': timestamp.toUtc().toIso8601String(),
+    'notes': notes,
+    'exercises': exercises.map((e) => e.toApi()).toList(),
+  };
+
   factory Workout.fromMap(Map<String, dynamic> map) {
     return Workout(
       id: map['id'] as int?,

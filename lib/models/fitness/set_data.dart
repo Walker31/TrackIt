@@ -28,14 +28,24 @@ class SetData {
     };
   }
 
+  /// Nested payload for [Exercise.toApi]; the server sets `exercise`.
+  Map<String, dynamic> toApi() => {
+    'set_number': setNumber,
+    'weight': weight.toString(), // EncryptedCharField on the server
+    'reps': reps,
+    'is_completed': isCompleted,
+  };
+
   factory SetData.fromMap(Map<String, dynamic> map) {
     return SetData(
       id: map['id'] as int?,
-      exerciseId: map['exercise'] as int, // Django uses 'exercise'
+      // Django uses 'exercise'; the local SQLite column is 'exercise_id'.
+      exerciseId: (map['exercise'] ?? map['exercise_id']) as int,
       setNumber: map['set_number'] as int,
       weight: double.parse(map['weight'].toString()),
       reps: map['reps'] as int,
-      isCompleted: map['is_completed'] as bool, // Django returns bool
+      // Django returns a bool; SQLite stores 0/1.
+      isCompleted: map['is_completed'] == true || map['is_completed'] == 1,
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : null,

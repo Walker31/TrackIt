@@ -13,79 +13,65 @@ class SessionSummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final progress = workout.getSessionCompletionPercentage() / 100;
     return AppCard(
-      gradient: AppColors.primaryGradient,
-      child: Stack(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
             children: [
-              Text(
-                workout.type.displayName.toUpperCase(),
-                style: AppTextStyles.label.copyWith(color: Colors.white70),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                workout.notes ?? "Workout Session",
-                style: AppTextStyles.h2.copyWith(fontSize: 24),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "TOTAL VOLUME",
-                        style: AppTextStyles.label.copyWith(
-                          color: Colors.white70,
-                        ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      workout.type.displayName.toUpperCase(),
+                      style: AppTextStyles.label.copyWith(
+                        color: AppColors.textTertiary,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        "${workout.getTotalSessionVolume().toStringAsFixed(0)} kg",
-                        style: AppTextStyles.h3,
-                      ),
-                    ],
-                  ),
-                ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      workout.notes ?? "Workout Session",
+                      style: AppTextStyles.h2,
+                    ),
+                  ],
+                ),
               ),
+              Icon(workout.type.icon, color: AppColors.primary, size: 28),
             ],
           ),
-          Positioned(
-            right: 0,
-            top: 0,
-            child: Icon(workout.type.icon, color: Colors.white24, size: 64),
-          ),
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  "Session Progress",
-                  style: AppTextStyles.bodySm.copyWith(color: Colors.white70),
-                ),
-                Text(
-                  "${(progress * 100).toStringAsFixed(0)}%",
-                  style: AppTextStyles.bodySm.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: 100,
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    backgroundColor: Colors.white10,
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      Colors.white,
-                    ),
-                  ),
-                ),
-              ],
+          const SizedBox(height: 20),
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: progress),
+            duration: const Duration(milliseconds: 700),
+            curve: Curves.easeOutCubic,
+            builder: (context, v, _) => ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: v,
+                minHeight: 3,
+                backgroundColor: AppColors.surfaceVariant,
+                valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+              ),
             ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "${workout.getTotalSessionVolume().toStringAsFixed(0)} kg volume",
+                style: AppTextStyles.bodyMd.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                "${(progress * 100).toStringAsFixed(0)}% done",
+                style: AppTextStyles.bodyMd.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
           ),
         ],
       ),

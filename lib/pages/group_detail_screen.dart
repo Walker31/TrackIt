@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../theme/responsive.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../models/expenses.dart';
 import '../providers/app_providers.dart';
+import '../providers/group_provider.dart';
 import '../widgets/wallet/add_group_expense_sheet.dart';
 import '../widgets/wallet/add_member_sheet.dart';
 import '../widgets/wallet/settle_up_sheet.dart';
@@ -53,7 +55,10 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
   }
 
   int? _myMemberId(Group group) {
-    final username = ref.read(groupProviderProvider).currentUsername;
+    // Local mode has no account; the device's member is the 'Me' row.
+    final username =
+        ref.read(groupProviderProvider).currentUsername ??
+        GroupProvider.localUsername;
     final match = group.members.where((m) => m.username == username);
     return match.isEmpty ? null : match.first.id;
   }
@@ -90,8 +95,19 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+                padding: EdgeInsets.fromLTRB(
+                  Responsive.centeringPadding(context),
+                  8,
+                  Responsive.centeringPadding(context),
+                  120,
+                ),
                 children: [
+                  _RejectedMembersBanner(
+                    names: [
+                      for (final m in group.members)
+                        if (m.syncError != null) m.username,
+                    ],
+                  ),
                   AnimatedSegmentedTabs(
                     labels: const ["Expenses", "Balances"],
                     selectedIndex: _tabIndex,
@@ -116,6 +132,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                             child: GroupExpenseList(
                               expenses: _expenses,
                               members: group.members,
+                              currentMemberId: myMemberId,
                             ),
                           )
                         : KeyedSubtree(
@@ -212,11 +229,11 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
         currentMemberId: myMemberId,
         members: group.members,
         balances: _balances,
-        onSettle: (toMemberId, amount) async {
+        onSettle: (fromMemberId, toMemberId, amount) async {
           await provider.recordSettlement(
             Settlement(
               groupId: widget.groupId,
-              fromMemberId: myMemberId,
+              fromMemberId: fromMemberId,
               toMemberId: toMemberId,
               amount: amount,
               timestamp: DateTime.now(),
@@ -229,6 +246,47 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
             'Settlement of ₹${amount.toStringAsFixed(0)} recorded.',
           );
         },
+      ),
+    );
+  }
+}
+
+/// Explains why expenses with people the server refused (no TrackIt
+/// account) stay on this device instead of syncing.
+class _RejectedMembersBanner extends StatelessWidget {
+  final List<String> names;
+  const _RejectedMembersBanner({required this.names});
+
+  @override
+  Widget build(BuildContext context) {
+    if (names.isEmpty) return const SizedBox.shrink();
+    final who = names.join(', ');
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline_rounded, color: AppColors.accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              names.length == 1
+                  ? "$who doesn't have a TrackIt account, so expenses "
+                        'shared with them stay on this device.'
+                  : "$who don't have TrackIt accounts, so expenses "
+                        'shared with them stay on this device.',
+              style: AppTextStyles.bodySm.copyWith(
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

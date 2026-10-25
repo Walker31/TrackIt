@@ -3,10 +3,10 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../app_card.dart';
 import '../section_header.dart';
-import '../glass_container.dart';
 import '../donut_chart.dart';
 import '../../models/expenses.dart';
 import '../../providers/expense_provider.dart';
+import '../animated/fade_slide_in.dart';
 
 class RecentExpensesSection extends StatelessWidget {
   final ExpenseProvider provider;
@@ -20,45 +20,54 @@ class RecentExpensesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final summary = provider.todaySummary;
+    final hasData = summary != null && summary.categoryTotals.isNotEmpty;
+    final firstLoad = provider.isLoading && summary == null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionHeader(
-          title: "Recent Expenses",
-          subtitle: "Wallet",
+          title: "Recent expenses",
           action: TextButton(
             onPressed: onViewAll,
-            child: const Text(
-              "View All",
-              style: TextStyle(color: AppColors.primary),
+            child: Text(
+              "View all",
+              style: AppTextStyles.bodyMd.copyWith(color: AppColors.primary),
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        if (provider.isLoading)
-          const Center(
-            child: CircularProgressIndicator(color: AppColors.primary),
-          )
-        else if (provider.todaySummary == null ||
-            provider.todaySummary!.categoryTotals.isEmpty)
-          const AppCard(child: Center(child: Text("No expenses logged today")))
-        else
-          Column(
-            children: [
-              _buildCategoryOverview(provider.todaySummary!),
-              const SizedBox(height: 16),
-              _buildRecentTransactions(provider.expenses),
-            ],
-          ),
+        const SizedBox(height: 8),
+        if (firstLoad)
+          const SizedBox(height: 80)
+        else if (!hasData)
+          _empty("No expenses logged today")
+        else ...[
+          _buildCategoryOverview(summary),
+          const SizedBox(height: 12),
+          _buildRecentTransactions(provider.expenses),
+        ],
       ],
     );
   }
+
+  Widget _empty(String text) => AppCard(
+    child: SizedBox(
+      width: double.infinity,
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: AppTextStyles.bodyMd.copyWith(color: AppColors.textSecondary),
+      ),
+    ),
+  );
 
   Widget _buildCategoryOverview(DailyExpenseSummary summary) {
     final nonZero = Map.fromEntries(
       summary.categoryTotals.entries.where((e) => e.value > 0),
     );
-    var topCategory = nonZero.entries.reduce(
+    if (nonZero.isEmpty) return _empty("No expenses logged today");
+    final topCategory = nonZero.entries.reduce(
       (a, b) => a.value > b.value ? a : b,
     );
 
@@ -66,37 +75,42 @@ class RecentExpensesSection extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: 80,
-            height: 80,
+            width: 72,
+            height: 72,
             child: Stack(
               alignment: Alignment.center,
               children: [
                 DonutChart(
                   categoryTotals: nonZero,
                   totalAmount: summary.totalAmount,
-                  size: 80,
+                  size: 72,
                 ),
                 Icon(
                   topCategory.key.icon,
                   color: topCategory.key.color,
-                  size: 22,
+                  size: 20,
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 24),
+          const SizedBox(width: 20),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("TOP CATEGORY", style: AppTextStyles.label),
-                const SizedBox(height: 4),
-                Text(topCategory.key.displayName, style: AppTextStyles.h3),
-                const SizedBox(height: 12),
-                Text("Total Today", style: AppTextStyles.bodyMd),
                 Text(
-                  "₹${summary.totalAmount.toStringAsFixed(0)}",
-                  style: AppTextStyles.h2.copyWith(color: AppColors.secondary),
+                  "Top category",
+                  style: AppTextStyles.bodySm.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                Text(topCategory.key.displayName, style: AppTextStyles.h3),
+                const SizedBox(height: 8),
+                Text(
+                  "₹${summary.totalAmount.toStringAsFixed(0)} today",
+                  style: AppTextStyles.bodyMd.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -109,60 +123,61 @@ class RecentExpensesSection extends StatelessWidget {
   Widget _buildRecentTransactions(List<Expense> expenses) {
     final recent = expenses.take(3).toList();
     return Column(
-      children: recent
-          .map(
-            (e) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: GlassContainer(
-                padding: const EdgeInsets.all(16),
-                borderRadius: 16,
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: e.category.color.withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        e.category.icon,
-                        color: e.category.color,
-                        size: 20,
-                      ),
+      children: [
+        for (var i = 0; i < recent.length; i++)
+          FadeSlideIn(
+            index: i,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: recent[i].category.color.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            e.description ?? e.category.displayName,
-                            style: AppTextStyles.bodyMd.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                    child: Icon(
+                      recent[i].category.icon,
+                      color: recent[i].category.color,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          recent[i].description ??
+                              recent[i].category.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.bodyMd.copyWith(
+                            fontWeight: FontWeight.w600,
                           ),
-                          Text(
-                            e.category.displayName,
-                            style: AppTextStyles.bodySm.copyWith(
-                              color: AppColors.textSecondary,
-                            ),
+                        ),
+                        Text(
+                          recent[i].category.displayName,
+                          style: AppTextStyles.bodySm.copyWith(
+                            color: AppColors.textSecondary,
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                    Text(
-                      "-₹${e.amount.toStringAsFixed(0)}",
-                      style: AppTextStyles.bodyLg.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.expense,
-                      ),
+                  ),
+                  Text(
+                    "-₹${recent[i].amount.toStringAsFixed(0)}",
+                    style: AppTextStyles.bodyMd.copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-          )
-          .toList(),
+          ),
+      ],
     );
   }
 }

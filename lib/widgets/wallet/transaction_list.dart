@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
-import '../glass_container.dart';
 import '../../providers/expense_provider.dart';
 import '../../models/expenses.dart';
 import '../app_snackbar.dart';
 import '../animated/fade_slide_in.dart';
-import '../animated/tap_scale.dart';
+import '../ledger_row.dart';
 
 class TransactionList extends StatelessWidget {
   final ExpenseProvider provider;
@@ -84,97 +83,45 @@ class TransactionList extends StatelessWidget {
     // must be raised from this (still-mounted) list-level context.
     final rootContext = context;
 
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: expenses.length,
-      itemBuilder: (context, index) {
-        final e = expenses[index];
-        return FadeSlideIn(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: ledgerSections<Expense>(
+        expenses,
+        (e) => e.timestamp,
+        (e, index) => FadeSlideIn(
           index: index,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Dismissible(
-              key: Key(e.id.toString()),
-              direction: DismissDirection.endToStart,
-              onDismissed: (_) => _deleteWithUndo(rootContext, e),
-              background: Container(
-                alignment: Alignment.centerRight,
-                padding: const EdgeInsets.only(right: 20),
-                decoration: BoxDecoration(
-                  color: AppColors.expense.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Icon(
-                  Icons.delete_outline,
-                  color: AppColors.expense,
-                ),
-              ),
-              child: TapScale(
-                onTap: () {},
-                child: GlassContainer(
-                  padding: const EdgeInsets.all(16),
-                  borderRadius: 16,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onLongPress: () {
-                      final id = e.id;
-                      if (id != null) {
-                        _confirmDelete(context, id);
-                      }
-                    },
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: e.category.color.withValues(alpha: 0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            e.category.icon,
-                            color: e.category.color,
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                e.description ?? e.category.displayName,
-                                style: AppTextStyles.bodyMd.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                DateFormat('hh:mm a').format(e.timestamp),
-                                style: AppTextStyles.bodySm.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          "${e.isIncome ? '+' : '-'}₹${e.amount.toStringAsFixed(0)}",
-                          style: AppTextStyles.bodyLg.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: e.isIncome
-                                ? AppColors.income
-                                : AppColors.expense,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+          child: Dismissible(
+            key: Key(e.id.toString()),
+            direction: DismissDirection.endToStart,
+            onDismissed: (_) => _deleteWithUndo(rootContext, e),
+            background: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 20),
+              color: AppColors.expense.withValues(alpha: 0.12),
+              child: const Icon(Icons.delete_outline, color: AppColors.expense),
+            ),
+            child: LedgerRow(
+              date: e.timestamp,
+              icon: e.category.icon,
+              iconColor: e.category.color,
+              title: e.description ?? e.category.displayName,
+              // Named entries keep their category visible.
+              subtitle: [
+                if (e.description != null) e.category.displayName,
+                DateFormat('hh:mm a').format(e.timestamp),
+                if (e.paymentMethod != null) e.paymentMethod!.label,
+              ].join(' · '),
+              trailingLabel: e.isIncome ? 'you received' : 'you spent',
+              trailingAmount: formatRupees(e.amount),
+              trailingColor: e.isIncome ? AppColors.income : AppColors.outflow,
+              onLongPress: () {
+                final id = e.id;
+                if (id != null) _confirmDelete(context, id);
+              },
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

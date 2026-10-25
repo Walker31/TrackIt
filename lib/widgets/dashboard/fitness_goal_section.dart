@@ -5,6 +5,7 @@ import '../app_card.dart';
 import '../section_header.dart';
 import '../../models/workouts.dart';
 import '../../providers/workout_provider.dart';
+import '../animated/fade_slide_in.dart';
 
 class FitnessGoalSection extends StatelessWidget {
   final WorkoutProvider provider;
@@ -18,34 +19,47 @@ class FitnessGoalSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final workout = provider.todayWorkout;
+    final firstLoad = provider.isLoading && workout == null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionHeader(
-          title: "Fitness Goal",
-          subtitle: "Workout",
+          title: "Today's workout",
           action: TextButton(
             onPressed: onViewAll,
-            child: const Text(
-              "View All",
-              style: TextStyle(color: AppColors.primary),
+            child: Text(
+              "View all",
+              style: AppTextStyles.bodyMd.copyWith(color: AppColors.primary),
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        if (provider.isLoading)
-          const Center(
-            child: CircularProgressIndicator(color: AppColors.primary),
+        const SizedBox(height: 8),
+        if (firstLoad)
+          const SizedBox(height: 80)
+        else if (workout == null || workout.exercises.isEmpty)
+          AppCard(
+            child: SizedBox(
+              width: double.infinity,
+              child: Text(
+                "No exercises logged today",
+                textAlign: TextAlign.center,
+                style: AppTextStyles.bodyMd.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
           )
-        else if (provider.todayWorkout == null ||
-            provider.todayWorkout!.exercises.isEmpty)
-          const AppCard(child: Center(child: Text("No exercises logged today")))
         else
           Column(
-            children: provider.todayWorkout!.exercises
-                .take(2)
-                .map((e) => _buildExerciseCard(e))
-                .toList(),
+            children: [
+              for (var i = 0; i < workout.exercises.take(2).length; i++)
+                FadeSlideIn(
+                  index: i,
+                  child: _buildExerciseCard(workout.exercises[i]),
+                ),
+            ],
           ),
       ],
     );
@@ -54,25 +68,12 @@ class FitnessGoalSection extends StatelessWidget {
   Widget _buildExerciseCard(Exercise exercise) {
     final progress = exercise.getCompletionPercentage() / 100;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 10),
       child: AppCard(
         child: Column(
           children: [
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.fitness_center,
-                    color: AppColors.primary,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -80,7 +81,7 @@ class FitnessGoalSection extends StatelessWidget {
                       Text(
                         exercise.name,
                         style: AppTextStyles.bodyMd.copyWith(
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       Text(
@@ -93,21 +94,26 @@ class FitnessGoalSection extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  "${exercise.getCompletedSetsCount()}/${exercise.sets.length} Sets",
+                  "${exercise.getCompletedSetsCount()}/${exercise.sets.length} sets",
                   style: AppTextStyles.bodySm.copyWith(
-                    fontWeight: FontWeight.bold,
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 6,
-                backgroundColor: AppColors.surfaceVariant,
-                valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+            const SizedBox(height: 14),
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: progress),
+              duration: const Duration(milliseconds: 700),
+              curve: Curves.easeOutCubic,
+              builder: (context, v, _) => ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: LinearProgressIndicator(
+                  value: v,
+                  minHeight: 3,
+                  backgroundColor: AppColors.surfaceVariant,
+                  valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                ),
               ),
             ),
           ],

@@ -7,6 +7,10 @@ class GroupMember {
   final String? email;
   final String role;
 
+  /// Why the server refused this member (e.g. no account with that
+  /// username). Null when fine or not yet tried.
+  final String? syncError;
+
   GroupMember({
     this.id,
     this.remoteId,
@@ -15,6 +19,7 @@ class GroupMember {
     required this.username,
     this.email,
     this.role = 'member',
+    this.syncError,
   });
 
   bool get isOwner => role == 'owner';
@@ -40,6 +45,7 @@ class GroupMember {
       username: map['username'] as String,
       email: map['email'] as String?,
       role: map['role'] as String? ?? 'member',
+      syncError: map['sync_error'] as String?,
     );
   }
 
@@ -52,6 +58,7 @@ class GroupMember {
       username: username,
       email: email,
       role: role,
+      syncError: syncError,
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
+import '../widgets/brand_mark.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -12,29 +13,36 @@ class SplashScreen extends ConsumerStatefulWidget {
 }
 
 class _SplashScreenState extends ConsumerState<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
-  late Animation<double> _scaleAnimation;
+    with TickerProviderStateMixin {
+  late final AnimationController _intro = AnimationController(
+    duration: const Duration(milliseconds: 1100),
+    vsync: this,
+  )..forward();
+
+  // Slow breathing glow behind the logo while we wait.
+  late final AnimationController _pulse = AnimationController(
+    duration: const Duration(milliseconds: 1600),
+    vsync: this,
+  )..repeat(reverse: true);
+
+  late final Animation<double> _logoScale = CurvedAnimation(
+    parent: _intro,
+    curve: const Interval(0, 0.6, curve: Curves.easeOutBack),
+  );
+  late final Animation<double> _textReveal = CurvedAnimation(
+    parent: _intro,
+    curve: const Interval(0.35, 1, curve: Curves.easeOutCubic),
+  );
+
+  // Only show a progress hint if start-up is slower than the intro.
+  bool _showProgress = false;
 
   @override
   void initState() {
     super.initState();
-
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    );
-
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
-    );
-
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
-    );
-
-    _animationController.forward();
+    Future.delayed(const Duration(milliseconds: 1800), () {
+      if (mounted) setState(() => _showProgress = true);
+    });
 
     // Wait for auth status to be determined
     Future.microtask(() {
@@ -59,8 +67,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   void _navigateToNext(AuthStatus status) {
     if (!mounted) return;
 
-    // Give a small delay for the animation to feel good
-    Future.delayed(const Duration(milliseconds: 1500), () {
+    // Let the intro animation finish before moving on
+    Future.delayed(const Duration(milliseconds: 1100), () {
       if (mounted) {
         if (status == AuthStatus.authenticated || status == AuthStatus.local) {
           context.go('/home');
@@ -73,120 +81,100 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   @override
   void dispose() {
-    _animationController.dispose();
+    _intro.dispose();
+    _pulse.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 500),
+      body: Container(
+        decoration: const BoxDecoration(gradient: AppColors.splashGradient),
+        child: SafeArea(
           child: Stack(
             children: [
-              // Background Gradient
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    gradient: RadialGradient(
-                      center: Alignment.center,
-                      radius: 1.5,
-                      colors: [
-                        AppColors.primary.withValues(alpha: 0.1),
-                        AppColors.background,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
               Center(
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Logo
-                    FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: ScaleTransition(
-                        scale: _scaleAnimation,
-                        child: Container(
-                          width: 120,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: AppColors.primaryGradient,
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primary.withValues(alpha: 0.4),
-                                blurRadius: 30,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.track_changes,
-                              color: Colors.white,
-                              size: 60,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 40),
-
-                    // App Title
-                    FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: Column(
+                    SizedBox(
+                      width: 140,
+                      height: 140,
+                      child: Stack(
+                        alignment: Alignment.center,
                         children: [
-                          const Text('TrackIT', style: AppTextStyles.h1),
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.surface,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: AppColors.primary.withValues(alpha: 0.3),
+                          AnimatedBuilder(
+                            animation: _pulse,
+                            builder: (context, _) => Container(
+                              width: 96 + 40 * _pulse.value,
+                              height: 96 + 40 * _pulse.value,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white.withValues(
+                                  alpha: 0.14 * (1 - _pulse.value) + 0.04,
+                                ),
                               ),
                             ),
-                            child: const Text(
-                              'MASTER YOUR LIFESTYLE',
-                              style: AppTextStyles.label,
-                            ),
+                          ),
+                          ScaleTransition(
+                            scale: _logoScale,
+                            child: const BrandMark(size: 84, onGradient: true),
                           ),
                         ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    FadeTransition(
+                      opacity: _textReveal,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.3),
+                          end: Offset.zero,
+                        ).animate(_textReveal),
+                        child: Column(
+                          children: [
+                            Text(
+                              'TrackIt',
+                              style: AppTextStyles.h1.copyWith(
+                                color: Colors.white,
+                                fontSize: 34,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Spending and training, in one place',
+                              style: AppTextStyles.bodyMd.copyWith(
+                                color: Colors.white.withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-
-              // Loading Indicator
               Positioned(
-                bottom: 80,
                 left: 0,
                 right: 0,
-                child: FadeTransition(
-                  opacity: _fadeAnimation,
-                  child: const Column(
-                    children: [
-                      SizedBox(
-                        width: 30,
-                        height: 30,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation(AppColors.primary),
+                bottom: 48,
+                child: AnimatedOpacity(
+                  opacity: _showProgress ? 1 : 0,
+                  duration: const Duration(milliseconds: 300),
+                  child: Center(
+                    child: SizedBox(
+                      width: 120,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(
+                          minHeight: 3,
+                          color: Colors.white,
+                          backgroundColor: Colors.white.withValues(alpha: 0.2),
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),

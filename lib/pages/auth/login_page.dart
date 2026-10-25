@@ -4,7 +4,13 @@ import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/app_mode_service.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_text_styles.dart';
+import '../../widgets/animated/tap_scale.dart';
+import '../../widgets/app_button.dart';
 import '../../widgets/app_snackbar.dart';
+import '../../widgets/auth_field.dart';
+import '../../widgets/auth_scaffold.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -82,148 +88,233 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     );
     controller.dispose();
     if (saved != null) await AppModeService().setServerUrl(saved);
+    if (mounted) setState(() {});
+  }
+
+  String get _serverHost {
+    final host = Uri.tryParse(ApiService.baseUrl)?.host ?? '';
+    return host.isEmpty ? ApiService.baseUrl : host;
   }
 
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider).state;
 
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Theme.of(context).colorScheme.surface,
-              Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+    return AuthScaffold(
+      title: 'Welcome back',
+      subtitle: 'Log in to sync your data across devices.',
+      form: AutofillGroup(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AuthField(
+              controller: _usernameController,
+              hint: 'Username',
+              icon: Icons.person_outline_rounded,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.username],
+            ),
+            const SizedBox(height: 12),
+            AuthField(
+              controller: _passwordController,
+              hint: 'Password',
+              icon: Icons.lock_outline_rounded,
+              obscure: _obscurePassword,
+              textInputAction: TextInputAction.done,
+              onSubmitted: _handleLogin,
+              autofillHints: const [AutofillHints.password],
+              suffix: _VisibilityToggle(
+                obscured: _obscurePassword,
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
+              ),
+            ),
+            const SizedBox(height: 20),
+            AppButton(
+              text: 'Log in',
+              isLoading: authState.isLoading,
+              onPressed: _handleLogin,
+            ),
+            const SizedBox(height: 24),
+            const _OrDivider(),
+            const SizedBox(height: 24),
+            _LocalModeOption(onTap: authState.isLoading ? null : _useLocalMode),
+          ],
+        ),
+      ),
+      footer: Column(
+        children: [
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                'New to TrackIt?',
+                style: AppTextStyles.bodyMd.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              TextButton(
+                onPressed: () => context.push('/register'),
+                child: Text(
+                  'Create an account',
+                  style: AppTextStyles.bodyMd.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             ],
           ),
+          const SizedBox(height: 4),
+          _ServerChip(host: _serverHost, onTap: _editServerUrl),
+        ],
+      ),
+    );
+  }
+}
+
+class _VisibilityToggle extends StatelessWidget {
+  final bool obscured;
+  final VoidCallback onPressed;
+  const _VisibilityToggle({required this.obscured, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: obscured ? 'Show password' : 'Hide password',
+      onPressed: onPressed,
+      icon: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 180),
+        child: Icon(
+          obscured ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+          key: ValueKey(obscured),
+          size: 20,
+          color: AppColors.textTertiary,
         ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
+      ),
+    );
+  }
+}
+
+class _OrDivider extends StatelessWidget {
+  const _OrDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    final line = Expanded(
+      child: Divider(color: AppColors.textTertiary.withValues(alpha: 0.25)),
+    );
+    return Row(
+      children: [
+        line,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            'or',
+            style: AppTextStyles.bodySm.copyWith(color: AppColors.textTertiary),
+          ),
+        ),
+        line,
+      ],
+    );
+  }
+}
+
+/// "Use without an account" as a tappable card that explains the trade-off.
+class _LocalModeOption extends StatelessWidget {
+  final VoidCallback? onTap;
+  const _LocalModeOption({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return TapScale(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: AppColors.textTertiary.withValues(alpha: 0.25),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.secondary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.phone_android_rounded,
+                color: AppColors.secondary,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    Icons.track_changes_rounded,
-                    size: 80,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(height: 16),
                   Text(
-                    'TrackIt',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
+                    'Continue without an account',
+                    style: AppTextStyles.bodyMd.copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 2),
                   Text(
-                    'Log in to your account',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyLarge?.copyWith(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 48),
-                  TextField(
-                    controller: _usernameController,
-                    decoration: InputDecoration(
-                      labelText: 'Username',
-                      prefixIcon: const Icon(Icons.person_outline),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                        ),
-                        onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword,
-                        ),
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: authState.isLoading ? null : _handleLogin,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: authState.isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text(
-                            'Log In',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                  ),
-                  const SizedBox(height: 16),
-                  OutlinedButton(
-                    onPressed: authState.isLoading ? null : _useLocalMode,
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: const Text('Continue without an account'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: _editServerUrl,
-                    child: const Text('Server settings'),
-                  ),
-                  TextButton(
-                    onPressed: () => context.push('/register'),
-                    child: RichText(
-                      text: TextSpan(
-                        text: "Don't have an account? ",
-                        style: TextStyle(color: Colors.grey[400]),
-                        children: [
-                          TextSpan(
-                            text: 'Sign Up',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.primary,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
+                    'Everything stays on this device. You can connect later.',
+                    style: AppTextStyles.bodySm.copyWith(
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ],
               ),
             ),
-          ),
+            Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shows which backend the app will log in to; tap to change it.
+class _ServerChip extends StatelessWidget {
+  final String host;
+  final VoidCallback onTap;
+  const _ServerChip({required this.host, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return TapScale(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceVariant,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.dns_outlined, size: 15, color: AppColors.textSecondary),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                'Server: $host',
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.bodySm.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.edit_outlined, size: 13, color: AppColors.textTertiary),
+          ],
         ),
       ),
     );

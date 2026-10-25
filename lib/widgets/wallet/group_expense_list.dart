@@ -1,19 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../../theme/app_colors.dart';
-import '../../theme/app_text_styles.dart';
 import '../../models/expenses.dart';
-import '../glass_container.dart';
+import '../ledger_row.dart';
 import '../animated/fade_slide_in.dart';
 
 class GroupExpenseList extends StatelessWidget {
   final List<GroupExpense> expenses;
   final List<GroupMember> members;
 
+  /// The viewer's member id in this group, for "you lent / you borrowed".
+  final int? currentMemberId;
+
   const GroupExpenseList({
     super.key,
     required this.expenses,
     required this.members,
+    this.currentMemberId,
   });
 
   String _usernameFor(int memberId) {
@@ -28,63 +30,39 @@ class GroupExpenseList extends StatelessWidget {
     }
 
     return Column(
-      children: expenses.asMap().entries.map((entry) {
-        final index = entry.key;
-        final e = entry.value;
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: ledgerSections<GroupExpense>(expenses, (e) => e.timestamp, (
+        e,
+        index,
+      ) {
+        final me = currentMemberId;
+        final iPaid = me != null && e.payerMemberId == me;
+        final myShare = e.splits
+            .where((s) => s.memberId == me)
+            .fold<double>(0, (sum, s) => sum + s.shareAmount);
+        final payer = iPaid ? 'You' : _usernameFor(e.payerMemberId);
+
+        // Splitwise: what the expense means for *you*.
+        final (label, amount, color) = iPaid
+            ? ('you lent', e.amount - myShare, AppColors.income)
+            : myShare > 0
+            ? ('you borrowed', myShare, AppColors.outflow)
+            : ('not involved', null, AppColors.textTertiary);
+
         return FadeSlideIn(
           index: index,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: GlassContainer(
-              padding: const EdgeInsets.all(16),
-              borderRadius: 16,
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: e.category.color.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      e.category.icon,
-                      color: e.category.color,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          e.description ?? e.category.displayName,
-                          style: AppTextStyles.bodyMd.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          "Paid by ${_usernameFor(e.payerMemberId)} · ${DateFormat('MMM d, hh:mm a').format(e.timestamp)}",
-                          style: AppTextStyles.bodySm.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Text(
-                    "₹${e.amount.toStringAsFixed(0)}",
-                    style: AppTextStyles.bodyLg.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.expense,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          child: LedgerRow(
+            date: e.timestamp,
+            icon: e.category.icon,
+            iconColor: e.category.color,
+            title: e.description ?? e.category.displayName,
+            subtitle: '$payer paid ${formatRupees(e.amount)}',
+            trailingLabel: label,
+            trailingAmount: amount == null ? null : formatRupees(amount),
+            trailingColor: color,
           ),
         );
-      }).toList(),
+      }),
     );
   }
 }

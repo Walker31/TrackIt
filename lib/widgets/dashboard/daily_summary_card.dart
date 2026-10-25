@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../app_card.dart';
-import '../glass_container.dart';
 import '../../providers/expense_provider.dart';
 import '../../providers/workout_provider.dart';
 import '../animated/count_up_text.dart';
@@ -19,70 +18,84 @@ class DailySummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (expenseProvider.isLoading || workoutProvider.isLoading) {
+    final firstLoad =
+        (expenseProvider.isLoading || workoutProvider.isLoading) &&
+        expenseProvider.todaySummary == null;
+    if (firstLoad) {
       return const AppCard(
-        child: Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
+        child: SizedBox(
+          height: 150,
+          child: Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
         ),
       );
     }
 
     final latestWorkout = workoutProvider.todayWorkout;
     final todaySpend = expenseProvider.todaySummary?.totalAmount ?? 0;
-
-    double monthlySpend = expenseProvider.monthlySpent;
-    double monthlyBudget = expenseProvider.monthlyBudget;
-    double balance = monthlyBudget - monthlySpend;
+    final monthlySpend = expenseProvider.monthlySpent;
+    final monthlyBudget = expenseProvider.monthlyBudget;
+    final balance = monthlyBudget - monthlySpend;
+    final over = balance < 0;
+    final used = monthlyBudget <= 0
+        ? 0.0
+        : (monthlySpend / monthlyBudget).clamp(0.0, 1.0);
 
     return AppCard(
-      gradient: AppColors.primaryGradient,
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "REMAINING MONTHLY LIMIT",
-                    style: AppTextStyles.label.copyWith(
-                      color: Colors.white.withValues(alpha: 0.7),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  CountUpText(
-                    value: balance,
-                    style: AppTextStyles.h1.copyWith(fontSize: 40),
-                  ),
-                ],
-              ),
-              if (latestWorkout != null)
-                _buildProgressIndicator(
-                  latestWorkout.getSessionCompletionPercentage(),
-                ),
-            ],
+          Text(
+            'SPENT THIS MONTH',
+            style: AppTextStyles.label.copyWith(color: AppColors.textTertiary),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 8),
+          CountUpText(
+            value: monthlySpend,
+            style: AppTextStyles.h1.copyWith(
+              fontSize: 38,
+              color: over ? AppColors.expense : AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: used),
+            duration: const Duration(milliseconds: 800),
+            curve: Curves.easeOutCubic,
+            builder: (context, v, _) => ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: v,
+                minHeight: 3,
+                backgroundColor: AppColors.surfaceVariant,
+                valueColor: AlwaysStoppedAnimation(
+                  over ? AppColors.expense : AppColors.primary,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
           Row(
             children: [
-              _buildSummaryItem(
-                label: "WORKOUT",
-                value: latestWorkout?.type.displayName ?? "Rest Day",
-                icon: Icons.fitness_center,
+              _stat('Today', '₹${todaySpend.toStringAsFixed(0)}'),
+              _stat(
+                over ? 'Over budget' : 'Left',
+                '₹${balance.abs().toStringAsFixed(0)}',
               ),
-              const SizedBox(width: 12),
-              _buildSummaryItem(
-                label: "TODAY SPEND",
-                value: "₹${todaySpend.toStringAsFixed(0)}",
-                icon: Icons.today,
-              ),
-              const SizedBox(width: 12),
-              _buildSummaryItem(
-                label: "MONTH SPEND",
-                value: "₹${monthlySpend.toStringAsFixed(0)}",
-                icon: Icons.account_balance_wallet,
+              _stat(
+                'Workout',
+                latestWorkout == null
+                    ? 'Rest day'
+                    : '${latestWorkout.getSessionCompletionPercentage().toStringAsFixed(0)}%',
               ),
             ],
           ),
@@ -91,80 +104,23 @@ class DailySummaryCard extends StatelessWidget {
     );
   }
 
-  Widget _buildProgressIndicator(double percentage) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: percentage / 100),
-      duration: const Duration(milliseconds: 900),
-      curve: Curves.easeOutCubic,
-      builder: (context, animatedValue, _) {
-        return SizedBox(
-          width: 80,
-          height: 80,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                width: 80,
-                height: 80,
-                child: CircularProgressIndicator(
-                  value: animatedValue,
-                  strokeWidth: 4,
-                  backgroundColor: Colors.white.withValues(alpha: 0.2),
-                  valueColor: const AlwaysStoppedAnimation(Colors.white),
-                ),
-              ),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    "${(animatedValue * 100).toStringAsFixed(0)}%",
-                    style: AppTextStyles.h3.copyWith(color: Colors.white),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text("Done", style: AppTextStyles.bodySm),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildSummaryItem({
-    required String label,
-    required String value,
-    required IconData icon,
-  }) {
+  Widget _stat(String label, String value) {
     return Expanded(
-      child: GlassContainer(
-        padding: const EdgeInsets.all(12),
-        borderRadius: 12,
-        color: Colors.white,
-        opacity: 0.15,
-        blur: 6,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: Colors.white.withValues(alpha: 0.7), size: 16),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: AppTextStyles.label.copyWith(
-                fontSize: 9,
-                color: Colors.white.withValues(alpha: 0.6),
-              ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: AppTextStyles.bodySm.copyWith(
+              color: AppColors.textSecondary,
             ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: AppTextStyles.bodyLg.copyWith(
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: AppTextStyles.bodyLg.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ],
       ),
     );
   }

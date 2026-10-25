@@ -3,18 +3,18 @@ import 'package:flutter/material.dart';
 class AppTextStyles {
   static const TextStyle h1 = TextStyle(
     fontSize: 32,
-    fontWeight: FontWeight.bold,
+    fontWeight: FontWeight.w600,
     letterSpacing: -1.0,
   );
 
   static const TextStyle h2 = TextStyle(
-    fontSize: 24,
-    fontWeight: FontWeight.bold,
-    letterSpacing: -0.5,
+    fontSize: 22,
+    fontWeight: FontWeight.w600,
+    letterSpacing: -0.4,
   );
 
   static const TextStyle h3 = TextStyle(
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: FontWeight.w600,
   );
 
@@ -35,7 +35,7 @@ class AppTextStyles {
 
   static const TextStyle label = TextStyle(
     fontSize: 11,
-    fontWeight: FontWeight.bold,
-    letterSpacing: 1.5,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 1.2,
   );
 }

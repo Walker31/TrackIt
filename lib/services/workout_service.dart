@@ -1,3 +1,4 @@
+import 'package:sqflite/sqflite.dart' show DatabaseExecutor;
 import 'database_service.dart';
 import 'sync_service.dart';
 import 'sync_outbox.dart';
@@ -95,12 +96,26 @@ class WorkoutService {
   /// Add an exercise
   Future<Exercise> addExercise(Exercise exercise) async {
     final db = await _dbService.getDatabase();
-    final map = exercise.toMap();
-    map['is_synced'] = 0;
-    map.remove('sets');
-    map.remove('workout');
 
-    final localId = await db.insert('exercises', map);
+    final localId = await db.insert('exercises', {
+      'workout_id': exercise.workoutId,
+      'name': exercise.name,
+      'muscle_group': exercise.muscleGroup,
+      'is_synced': 0,
+    });
+
+    for (final s in exercise.sets) {
+      await db.insert('sets', {
+        'exercise_id': localId,
+        'set_number': s.setNumber,
+        'weight': s.weight,
+        'reps': s.reps,
+        'is_completed': s.isCompleted ? 1 : 0,
+        'is_synced': 0,
+      });
+    }
+
+    await _markWorkoutDirty(db, exercise.workoutId);
     _syncService.performSync();
     return exercise.copyWith(id: localId);
   }
@@ -108,11 +123,15 @@ class WorkoutService {
   /// Add a set
   Future<SetData> addSet(SetData setData) async {
     final db = await _dbService.getDatabase();
-    final map = setData.toMap();
-    map['is_synced'] = 0;
-    map.remove('exercise');
-
-    final localId = await db.insert('sets', map);
+    final localId = await db.insert('sets', {
+      'exercise_id': setData.exerciseId,
+      'set_number': setData.setNumber,
+      'weight': setData.weight,
+      'reps': setData.reps,
+      'is_completed': setData.isCompleted ? 1 : 0,
+      'is_synced': 0,
+    });
+    await _markDirtyForExercise(db, setData.exerciseId);
     _syncService.performSync();
     return setData.copyWith(id: localId);
   }
@@ -126,6 +145,7 @@ class WorkoutService {
       where: 'id = ?',
       whereArgs: [setId],
     );
+    await _markDirtyForSet(db, setId);
     _syncService.performSync();
   }
 
@@ -138,6 +158,7 @@ class WorkoutService {
       where: 'id = ?',
       whereArgs: [setId],
     );
+    await _markDirtyForSet(db, setId);
     _syncService.performSync();
   }
 
@@ -150,7 +171,45 @@ class WorkoutService {
       where: 'id = ?',
       whereArgs: [setId],
     );
+    await _markDirtyForSet(db, setId);
     _syncService.performSync();
+  }
+
+  // The server stores a workout with its exercises and sets nested, so any
+  // child change means the whole workout has to be pushed again.
+  Future<void> _markWorkoutDirty(DatabaseExecutor db, int workoutId) =>
+      db.update(
+        'workouts',
+        {'is_synced': 0},
+        where: 'id = ?',
+        whereArgs: [workoutId],
+      );
+
+  Future<void> _markDirtyForExercise(
+    DatabaseExecutor db,
+    int exerciseId,
+  ) async {
+    final rows = await db.query(
+      'exercises',
+      columns: ['workout_id'],
+      where: 'id = ?',
+      whereArgs: [exerciseId],
+    );
+    if (rows.isNotEmpty) {
+      await _markWorkoutDirty(db, rows.first['workout_id'] as int);
+    }
+  }
+
+  Future<void> _markDirtyForSet(DatabaseExecutor db, int setId) async {
+    final rows = await db.query(
+      'sets',
+      columns: ['exercise_id'],
+      where: 'id = ?',
+      whereArgs: [setId],
+    );
+    if (rows.isNotEmpty) {
+      await _markDirtyForExercise(db, rows.first['exercise_id'] as int);
+    }
   }
 
   /// Get routines
