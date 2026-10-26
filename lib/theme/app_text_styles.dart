@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_colors.dart';
 
 class AppTextStyles {
   static const TextStyle h1 = TextStyle(
@@ -37,5 +38,17 @@ class AppTextStyles {
     fontSize: 11,
     fontWeight: FontWeight.w600,
     letterSpacing: 1.2,
+  );
+
+  /// Uppercase overline above a figure ("SPENT THIS MONTH"). Pass
+  /// upper-case text; for mixed-case form labels use [fieldLabel].
+  static TextStyle get overline =>
+      label.copyWith(color: AppColors.textTertiary);
+
+  /// Small label above a form field or control group ("Paid by").
+  static TextStyle get fieldLabel => TextStyle(
+    fontSize: 13,
+    fontWeight: FontWeight.w600,
+    color: AppColors.textSecondary,
   );
 }

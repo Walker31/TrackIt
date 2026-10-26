@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../theme/responsive.dart';
-import '../theme/app_colors.dart';
 import '../widgets/animated/fade_slide_in.dart';
 import '../widgets/app_card.dart';
 import '../widgets/page_header.dart';
@@ -18,8 +17,11 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
-  final ExpenseService _expenseService = ExpenseService();
-  final WorkoutService _workoutService = WorkoutService();
+  // Fetched once per visit: the tab is rebuilt fresh each time it opens.
+  late final Future<Map<DateTime, double>> _spending = ExpenseService()
+      .getWeeklyExpenseData();
+  late final Future<Map<DateTime, double>> _volume = WorkoutService()
+      .getWeeklyVolumeData();
 
   @override
   Widget build(BuildContext context) {
@@ -39,17 +41,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               child: ResponsiveColumns(
                 gap: 40,
                 left: [
-                  const FadeSlideIn(
-                    child: SectionHeader(
-                      title: "Financial Trends",
-                      subtitle: "Weekly Spending",
-                    ),
-                  ),
-                  const SizedBox(height: 24),
+                  const FadeSlideIn(child: SectionHeader(title: "Spending")),
+                  const SizedBox(height: 12),
                   FadeSlideIn(
                     index: 1,
                     child: FutureBuilder<Map<DateTime, double>>(
-                      future: _expenseService.getWeeklyExpenseData(),
+                      future: _spending,
                       builder: (context, snapshot) => _fadeIn(
                         snapshot.connectionState == ConnectionState.waiting
                             ? const _ChartLoading()
@@ -61,16 +58,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 right: [
                   const FadeSlideIn(
                     index: 2,
-                    child: SectionHeader(
-                      title: "Physical Progress",
-                      subtitle: "Workout Volume",
-                    ),
+                    child: SectionHeader(title: "Training volume"),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 12),
                   FadeSlideIn(
                     index: 3,
                     child: FutureBuilder<Map<DateTime, double>>(
-                      future: _workoutService.getWeeklyVolumeData(),
+                      future: _volume,
                       builder: (context, snapshot) => _fadeIn(
                         snapshot.connectionState == ConnectionState.waiting
                             ? const _ChartLoading()
@@ -102,10 +96,8 @@ class _ChartLoading extends StatelessWidget {
   Widget build(BuildContext context) {
     return const AppCard(
       child: SizedBox(
-        height: 200,
-        child: Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
-        ),
+        height: 252,
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
       ),
     );
   }

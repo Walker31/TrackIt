@@ -51,7 +51,7 @@ class SessionSummaryCard extends StatelessWidget {
                 value: v,
                 minHeight: 3,
                 backgroundColor: AppColors.surfaceVariant,
-                valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                valueColor: AlwaysStoppedAnimation(AppColors.primary),
               ),
             ),
           ),

@@ -73,7 +73,9 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     final group = _currentGroup();
 
     if (group == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
     }
 
     final myMemberId = _myMemberId(group);
@@ -85,11 +87,18 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
           children: [
             Text(group.icon, style: const TextStyle(fontSize: 20)),
             const SizedBox(width: 8),
-            Text(group.name, style: AppTextStyles.h3),
+            Flexible(
+              child: Text(
+                group.name,
+                style: AppTextStyles.h3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         actions: [
           IconButton(
+            tooltip: 'Add member',
             icon: const Icon(Icons.person_add_alt_outlined),
             onPressed: () => _showAddMemberSheet(context),
           ),
@@ -104,7 +113,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                   value: 'delete',
                   child: Text(
                     'Delete event',
-                    style: TextStyle(color: Colors.redAccent),
+                    style: TextStyle(color: AppColors.expense),
                   ),
                 ),
             ],
@@ -112,7 +121,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
@@ -189,7 +198,6 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
             heroTag: 'add_expense',
             onPressed: () => _showAddExpenseSheet(context, group, myMemberId),
             tooltip: 'Add Expense',
-            backgroundColor: AppColors.primary,
             child: const Icon(Icons.add),
           ),
         ],
@@ -307,11 +315,11 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
             ListTile(
               leading: const Icon(
                 Icons.delete_outline,
-                color: Colors.redAccent,
+                color: AppColors.expense,
               ),
               title: const Text(
                 'Delete expense',
-                style: TextStyle(color: Colors.redAccent),
+                style: TextStyle(color: AppColors.expense),
               ),
               onTap: () {
                 Navigator.pop(sheetContext);

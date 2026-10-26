@@ -30,10 +30,7 @@ class DailySummaryCard extends StatelessWidget {
             child: SizedBox(
               width: 22,
               height: 22,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: AppColors.primary,
-              ),
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
           ),
         ),
@@ -55,10 +52,7 @@ class DailySummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'SPENT THIS MONTH',
-            style: AppTextStyles.label.copyWith(color: AppColors.textTertiary),
-          ),
+          Text('SPENT THIS MONTH', style: AppTextStyles.overline),
           const SizedBox(height: 8),
           CountUpText(
             value: monthlySpend,
@@ -67,16 +61,23 @@ class DailySummaryCard extends StatelessWidget {
               color: over ? AppColors.expense : AppColors.textPrimary,
             ),
           ),
+          if (monthlyBudget > 0)
+            Text(
+              'of ${formatRupees(monthlyBudget)} monthly budget',
+              style: AppTextStyles.bodySm.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
           const SizedBox(height: 16),
           TweenAnimationBuilder<double>(
             tween: Tween(begin: 0, end: used),
             duration: const Duration(milliseconds: 800),
             curve: Curves.easeOutCubic,
             builder: (context, v, _) => ClipRRect(
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: BorderRadius.circular(3),
               child: LinearProgressIndicator(
                 value: v,
-                minHeight: 3,
+                minHeight: 6,
                 backgroundColor: AppColors.surfaceVariant,
                 valueColor: AlwaysStoppedAnimation(
                   over ? AppColors.expense : AppColors.primary,

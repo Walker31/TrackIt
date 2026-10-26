@@ -93,25 +93,21 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                             gap: 40,
                             left: [
                               SectionHeader(
-                                title: "Financial Analysis",
-                                subtitle: "Monthly Spending",
+                                title: "Spending",
                                 action: _buildMonthSelector(provider),
                               ),
-                              const SizedBox(height: 24),
+                              const SizedBox(height: 16),
                               FadeSlideIn(
                                 child: FinancialAnalysisCard(
                                   provider: provider,
                                 ),
                               ),
-                              const SizedBox(height: 24),
+                              const SizedBox(height: 16),
                               BudgetsCard(provider: provider),
                             ],
                             right: [
-                              const SectionHeader(
-                                title: "Transactions",
-                                subtitle: "History",
-                              ),
-                              const SizedBox(height: 16),
+                              const SectionHeader(title: "Transactions"),
+                              const SizedBox(height: 8),
                               TransactionList(
                                 provider: provider,
                                 onEdit: _showEditExpenseSheet,
@@ -119,29 +115,15 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                             ],
                           )
                         : _tab == _WalletTab.trips
-                        ? Column(
+                        ? TripsSection(
                             key: const ValueKey('trips'),
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SectionHeader(
-                                title: "Trips",
-                                subtitle: "Tagged Spending",
-                              ),
-                              const SizedBox(height: 16),
-                              TripsSection(refresh: _tripsRefresh),
-                            ],
+                            refresh: _tripsRefresh,
+                            onCreate: _createTrip,
                           )
-                        : Column(
+                        : EventsSection(
                             key: const ValueKey('events'),
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SectionHeader(
-                                title: "Events",
-                                subtitle: "Shared Expenses",
-                              ),
-                              const SizedBox(height: 16),
-                              EventsSection(provider: groupProvider),
-                            ],
+                            provider: groupProvider,
+                            onCreate: () => _showCreateGroupSheet(context),
                           ),
                   ),
                 ],
@@ -161,7 +143,6 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                   key: const ValueKey('add_expense'),
                   onPressed: () => _showAddExpenseSheet(context),
                   tooltip: 'Add Expense',
-                  backgroundColor: AppColors.primary,
                   child: const Icon(Icons.add),
                 )
               : _tab == _WalletTab.trips
@@ -169,14 +150,12 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                   key: const ValueKey('new_trip'),
                   onPressed: _createTrip,
                   tooltip: 'New Trip',
-                  backgroundColor: AppColors.primary,
                   child: const Icon(Icons.add),
                 )
               : FloatingActionButton(
                   key: const ValueKey('new_event'),
                   onPressed: () => _showCreateGroupSheet(context),
                   tooltip: 'New Event',
-                  backgroundColor: AppColors.primary,
                   child: const Icon(Icons.add),
                 ),
         ),

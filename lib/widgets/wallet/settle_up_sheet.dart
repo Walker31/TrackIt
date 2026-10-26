@@ -155,7 +155,8 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
         left: 24,
         right: 24,
       ),
-      borderRadius: 32,
+      borderRadius: 24,
+      sheet: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -189,7 +190,10 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
                       : "$otherName doesn't owe you anything"),
           ),
           const SizedBox(height: 20),
-          Text(paid ? 'Paid to' : 'Received from', style: AppTextStyles.label),
+          Text(
+            paid ? 'Paid to' : 'Received from',
+            style: AppTextStyles.fieldLabel,
+          ),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12),

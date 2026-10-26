@@ -17,8 +17,15 @@ class AppColors {
 
   static bool get isDark => _isDark;
 
-  // Brand — identical in both themes
-  static const Color primary = Color(0xFF4F46E5); // Indigo
+  /// Brand indigo for filled surfaces (buttons, FABs) that carry white
+  /// content. Identical in both themes.
+  static const Color brand = Color(0xFF4F46E5);
+
+  /// Indigo for text, icons and accents drawn on the page background. Dark
+  /// mode lifts it so it stays readable on the dark surfaces.
+  static Color get primary => _isDark ? brandLight : brand;
+  static const Color brandLight = Color(0xFF8B8CFA);
+
   static const Color secondary = Color(0xFF059669); // Emerald
   static const Color accent = Color(0xFFD97706); // Amber
   static const Color expense = Color(0xFFE11D48); // Rose

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../models/expenses.dart';
+import '../empty_state.dart';
 import '../ledger_row.dart';
 import '../animated/fade_slide_in.dart';
 
@@ -36,7 +37,11 @@ class GroupExpenseList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (expenses.isEmpty && settlements.isEmpty) {
-      return const Center(child: Text("No expenses yet"));
+      return const EmptyState(
+        icon: Icons.receipt_long_outlined,
+        title: 'No expenses yet',
+        message: 'Tap + to add the first shared expense.',
+      );
     }
 
     return Column(

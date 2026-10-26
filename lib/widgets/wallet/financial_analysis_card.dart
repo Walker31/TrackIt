@@ -20,12 +20,7 @@ class FinancialAnalysisCard extends StatelessWidget {
       return const AppCard(
         child: SizedBox(
           height: 96,
-          child: Center(
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: AppColors.primary,
-            ),
-          ),
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
         ),
       );
     }

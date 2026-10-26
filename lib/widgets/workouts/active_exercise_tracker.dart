@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../app_card.dart';
-import '../glass_container.dart';
+import '../../utils/format.dart';
 import '../app_button.dart';
 import '../app_snackbar.dart';
 import '../../models/workouts.dart';
@@ -36,38 +36,28 @@ class ActiveExerciseTracker extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(exercise.name, style: AppTextStyles.h3),
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.history,
-                  color: AppColors.primary,
-                  size: 20,
-                ),
+          Text(exercise.name, style: AppTextStyles.h3),
+          if (exercise.muscleGroup.isNotEmpty)
+            Text(
+              exercise.muscleGroup,
+              style: AppTextStyles.bodySm.copyWith(
+                color: AppColors.textSecondary,
               ),
-            ],
-          ),
-          const SizedBox(height: 24),
+            ),
+          const SizedBox(height: 18),
           Row(
             children: [
               _buildMetricPicker(
                 "Weight",
-                "${weight.toStringAsFixed(1)} kg",
+                "${formatWeight(weight)} kg",
                 onWeightDec,
                 onWeightInc,
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               _buildMetricPicker("Reps", reps.toString(), onRepsDec, onRepsInc),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 18),
           AppButton(
             text: exercise.sets.any((s) => !s.isCompleted)
                 ? "Complete Set"
@@ -85,7 +75,7 @@ class ActiveExerciseTracker extends StatelessWidget {
                       isLast
                           ? '${exercise.name} complete — great work!'
                           : 'Set ${current.setNumber} logged: '
-                                '${weight.toStringAsFixed(1)}kg × $reps',
+                                '${formatWeight(weight)} kg × $reps',
                       aboveNav: true,
                     );
                   }
@@ -107,36 +97,35 @@ class ActiveExerciseTracker extends StatelessWidget {
     VoidCallback onInc,
   ) {
     return Expanded(
-      child: GlassContainer(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        borderRadius: 16,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceVariant,
+          borderRadius: BorderRadius.circular(14),
+        ),
         child: Column(
           children: [
-            Text(label, style: AppTextStyles.label),
-            const SizedBox(height: 8),
+            Text(label, style: AppTextStyles.fieldLabel),
+            const SizedBox(height: 4),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                IconButton(
-                  onPressed: onDec,
-                  icon: Icon(
-                    Icons.remove_circle_outline,
-                    color: AppColors.textSecondary,
+                _stepButton(
+                  Icons.remove_rounded,
+                  onDec,
+                  AppColors.textSecondary,
+                ),
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      value,
+                      style: AppTextStyles.bodyLg.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
-                Text(
-                  value,
-                  style: AppTextStyles.bodyLg.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                IconButton(
-                  onPressed: onInc,
-                  icon: const Icon(
-                    Icons.add_circle_outline,
-                    color: AppColors.primary,
-                  ),
-                ),
+                _stepButton(Icons.add_rounded, onInc, AppColors.primary),
               ],
             ),
           ],
@@ -144,4 +133,13 @@ class ActiveExerciseTracker extends StatelessWidget {
       ),
     );
   }
+
+  Widget _stepButton(IconData icon, VoidCallback onTap, Color color) =>
+      IconButton(
+        onPressed: onTap,
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+        padding: EdgeInsets.zero,
+        icon: Icon(icon, color: color, size: 22),
+      );
 }

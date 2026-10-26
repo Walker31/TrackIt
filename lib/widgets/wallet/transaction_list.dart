@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../theme/app_colors.dart';
-import '../../theme/app_text_styles.dart';
 import '../../providers/expense_provider.dart';
 import '../../models/expenses.dart';
 import '../app_snackbar.dart';
+import '../confirm_dialog.dart';
+import '../empty_state.dart';
 import '../animated/fade_slide_in.dart';
 import '../ledger_row.dart';
 
@@ -17,32 +18,13 @@ class TransactionList extends StatelessWidget {
   const TransactionList({super.key, required this.provider, this.onEdit});
 
   Future<void> _confirmDelete(BuildContext context, int expenseId) async {
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: const Text('Delete Expense', style: AppTextStyles.h3),
-        content: const Text(
-          'Do you want to delete this expense?',
-          style: AppTextStyles.bodyMd,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: AppColors.expense),
-            ),
-          ),
-        ],
-      ),
+    final shouldDelete = await confirmDestructive(
+      context,
+      title: 'Delete transaction?',
+      message: 'It will be removed from this month. You can undo right after.',
     );
 
-    if (shouldDelete == true && context.mounted) {
+    if (shouldDelete && context.mounted) {
       final match = provider.monthExpenses.where((x) => x.id == expenseId);
       if (match.isNotEmpty) {
         await _deleteWithUndo(context, match.first);
@@ -80,16 +62,11 @@ class TransactionList extends StatelessWidget {
     final expenses = provider.monthExpenses;
     if (expenses.isEmpty) {
       final month = DateFormat('MMMM').format(provider.selectedMonth);
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Center(
-          child: Text(
-            "No transactions in $month",
-            style: AppTextStyles.bodyMd.copyWith(
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ),
+      return EmptyState(
+        card: true,
+        icon: Icons.receipt_long_outlined,
+        title: 'No transactions in $month',
+        message: 'Tap + to add an expense or income.',
       );
     }
 

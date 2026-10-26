@@ -39,7 +39,8 @@ class _CreateGroupSheetState extends State<CreateGroupSheet> {
         left: 24,
         right: 24,
       ),
-      borderRadius: 32,
+      borderRadius: 24,
+      sheet: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -55,7 +56,7 @@ class _CreateGroupSheetState extends State<CreateGroupSheet> {
             ],
           ),
           const SizedBox(height: 24),
-          Text("Icon", style: AppTextStyles.label),
+          Text("Icon", style: AppTextStyles.fieldLabel),
           const SizedBox(height: 12),
           SizedBox(
             height: 50,

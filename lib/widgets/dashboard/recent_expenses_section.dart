@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../app_card.dart';
+import '../empty_state.dart';
 import '../section_header.dart';
 import '../donut_chart.dart';
 import '../../models/expenses.dart';
@@ -29,20 +30,17 @@ class RecentExpensesSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionHeader(
-          title: "Recent expenses",
+          title: "Today's spending",
           action: TextButton(
             onPressed: onViewAll,
-            child: Text(
-              "View all",
-              style: AppTextStyles.bodyMd.copyWith(color: AppColors.primary),
-            ),
+            child: const Text("View all"),
           ),
         ),
         const SizedBox(height: 8),
         if (firstLoad)
           const SizedBox(height: 80)
         else if (!hasData)
-          _empty("No expenses logged today")
+          _empty()
         else ...[
           _buildCategoryOverview(),
           const SizedBox(height: 12),
@@ -52,20 +50,17 @@ class RecentExpensesSection extends StatelessWidget {
     );
   }
 
-  Widget _empty(String text) => AppCard(
-    child: SizedBox(
-      width: double.infinity,
-      child: Text(
-        text,
-        textAlign: TextAlign.center,
-        style: AppTextStyles.bodyMd.copyWith(color: AppColors.textSecondary),
-      ),
-    ),
+  Widget _empty() => const EmptyState(
+    card: true,
+    compact: true,
+    icon: Icons.receipt_long_outlined,
+    title: 'Nothing spent today',
+    message: 'Expenses you add today show up here.',
   );
 
   Widget _buildCategoryOverview() {
     final spend = provider.spendByCategory(provider.expenses);
-    if (spend.isEmpty) return _empty("No expenses logged today");
+    if (spend.isEmpty) return _empty();
     final total = spend.fold<double>(0, (sum, e) => sum + e.value);
     final top = spend.first.key;
 

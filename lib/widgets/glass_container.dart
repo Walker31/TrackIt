@@ -14,6 +14,10 @@ class GlassContainer extends StatelessWidget {
   final Border? border;
   final EdgeInsetsGeometry? padding;
 
+  /// Bottom-sheet mode: only the top corners are rounded (the sheet sits on
+  /// the screen edge) and content clears the system navigation area.
+  final bool sheet;
+
   const GlassContainer({
     super.key,
     required this.child,
@@ -23,32 +27,36 @@ class GlassContainer extends StatelessWidget {
     this.color,
     this.border,
     this.padding,
+    this.sheet = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final baseColor = color ?? Theme.of(context).colorScheme.surface;
+    final radius = sheet
+        ? BorderRadius.vertical(top: Radius.circular(borderRadius))
+        : BorderRadius.circular(borderRadius);
+    final hairline = isDark
+        ? Colors.white.withValues(alpha: 0.07)
+        : Colors.black.withValues(alpha: 0.06);
 
     final content = Container(
       padding: padding,
       decoration: BoxDecoration(
         color: baseColor.withValues(alpha: opacity),
-        borderRadius: BorderRadius.circular(borderRadius),
+        borderRadius: radius,
         border:
             border ??
-            Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.07)
-                  : Colors.black.withValues(alpha: 0.06),
-              width: 1,
-            ),
+            (sheet
+                ? Border(top: BorderSide(color: hairline))
+                : Border.all(color: hairline, width: 1)),
       ),
-      child: child,
+      child: sheet ? SafeArea(top: false, child: child) : child,
     );
 
     return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
+      borderRadius: radius,
       child: blur > 0
           ? BackdropFilter(
               filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),

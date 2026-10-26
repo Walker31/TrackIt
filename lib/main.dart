@@ -32,6 +32,18 @@ void main() async {
   runApp(const ProviderScope(child: App()));
 }
 
+Brightness? _lastBrightness;
+
+/// Marks every element dirty so the next frame repaints with the new palette.
+void _rebuildAll() {
+  void visit(Element element) {
+    element.markNeedsBuild();
+    element.visitChildren(visit);
+  }
+
+  WidgetsBinding.instance.rootElement?.visitChildren(visit);
+}
+
 class App extends ConsumerWidget {
   const App({super.key});
 
@@ -47,7 +59,16 @@ class App extends ConsumerWidget {
       ThemeMode.dark => Brightness.dark,
       ThemeMode.system => platformBrightness,
     };
-    AppColors.sync(effectiveBrightness);
+    if (effectiveBrightness != _lastBrightness) {
+      final switched = _lastBrightness != null;
+      _lastBrightness = effectiveBrightness;
+      AppColors.sync(effectiveBrightness);
+      // AppColors getters aren't an InheritedWidget, so widgets that read
+      // them (and don't depend on Theme) would keep the old palette.
+      if (switched) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _rebuildAll());
+      }
+    }
 
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,

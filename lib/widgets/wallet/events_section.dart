@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../theme/app_colors.dart';
-import '../../theme/app_text_styles.dart';
 import '../../providers/group_provider.dart';
+import '../empty_state.dart';
 import '../../pages/group_detail_screen.dart';
 import '../animated/fade_slide_in.dart';
 import 'group_card.dart';
@@ -9,7 +8,10 @@ import 'group_card.dart';
 class EventsSection extends StatelessWidget {
   final GroupProvider provider;
 
-  const EventsSection({super.key, required this.provider});
+  /// Starts creating a new event (shown in the empty state).
+  final VoidCallback? onCreate;
+
+  const EventsSection({super.key, required this.provider, this.onCreate});
 
   @override
   Widget build(BuildContext context) {
@@ -18,30 +20,17 @@ class EventsSection extends StatelessWidget {
     if (provider.isLoading && groups.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 40),
-        child: Center(child: CircularProgressIndicator()),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
       );
     }
 
     if (groups.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40),
-        child: Column(
-          children: [
-            Icon(
-              Icons.groups_outlined,
-              size: 48,
-              color: AppColors.textSecondary,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              "No events yet.\nCreate one to split expenses with others.",
-              textAlign: TextAlign.center,
-              style: AppTextStyles.bodyMd.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
+      return EmptyState(
+        icon: Icons.groups_outlined,
+        title: 'No events yet',
+        message: 'Create one to split expenses with friends.',
+        actionLabel: 'New event',
+        onAction: onCreate,
       );
     }
 

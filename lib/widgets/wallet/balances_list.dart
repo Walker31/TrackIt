@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../models/expenses.dart';
+import '../empty_state.dart';
 import '../glass_container.dart';
 import '../animated/fade_slide_in.dart';
 import '../animated/count_up_text.dart';
@@ -19,7 +20,11 @@ class BalancesList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (balances.isEmpty) {
-      return const Center(child: Text("No balances yet"));
+      return const EmptyState(
+        icon: Icons.balance_rounded,
+        title: 'Everyone is settled up',
+        message: 'Balances appear once expenses are shared.',
+      );
     }
 
     return Column(
@@ -46,6 +51,10 @@ class BalancesList extends StatelessWidget {
                     backgroundColor: AppColors.primary.withValues(alpha: 0.15),
                     child: Text(
                       b.username.isNotEmpty ? b.username[0].toUpperCase() : '?',
+                      style: AppTextStyles.bodyLg.copyWith(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 16),

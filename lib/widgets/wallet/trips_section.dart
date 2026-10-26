@@ -5,6 +5,7 @@ import '../../services/catalog_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../animated/fade_slide_in.dart';
+import '../empty_state.dart';
 import '../glass_container.dart';
 import '../../utils/format.dart';
 
@@ -20,7 +21,11 @@ class _TripData {
 /// count and mini category breakdown. Reloads whenever [refresh] changes.
 class TripsSection extends StatefulWidget {
   final Listenable refresh;
-  const TripsSection({super.key, required this.refresh});
+
+  /// Starts creating a new trip (shown in the empty state).
+  final VoidCallback? onCreate;
+
+  const TripsSection({super.key, required this.refresh, this.onCreate});
 
   @override
   State<TripsSection> createState() => _TripsSectionState();
@@ -80,30 +85,17 @@ class _TripsSectionState extends State<TripsSection> {
         if (!snap.hasData) {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: CircularProgressIndicator()),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           );
         }
         final trips = snap.data!;
         if (trips.isEmpty) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 40),
-            child: Column(
-              children: [
-                Icon(
-                  Icons.luggage_outlined,
-                  size: 48,
-                  color: AppColors.textSecondary,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'No trips yet.\nCreate one and tag expenses to see totals.',
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.bodyMd.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
+          return EmptyState(
+            icon: Icons.luggage_outlined,
+            title: 'No trips yet',
+            message: 'Create one, then tag expenses to it to see its total.',
+            actionLabel: 'New trip',
+            onAction: widget.onCreate,
           );
         }
         return Column(
@@ -137,7 +129,7 @@ class _TripCard extends StatelessWidget {
 
     return GlassContainer(
       padding: const EdgeInsets.all(16),
-      borderRadius: 20,
+      borderRadius: 16,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -233,7 +225,7 @@ Future<SpendEvent?> showCreateTripDialog(BuildContext context) async {
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setState) => AlertDialog(
-        title: const Text('New trip / event'),
+        title: const Text('New trip'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
