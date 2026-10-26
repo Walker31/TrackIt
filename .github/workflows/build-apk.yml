@@ -14,6 +14,9 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # contents: write lets the release step create tags and releases.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -41,3 +44,21 @@ jobs:
           path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 30
+
+      # Builds of main (push or manual run) are also published as a GitHub
+      # Release, tagged with the pubspec version plus the run number so every
+      # build gets its own release, e.g. v1.0.0-build.4.
+      - name: Publish GitHub Release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          tag="v${version}-build.${{ github.run_number }}"
+          apk="trackit-${tag}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$apk"
+          gh release create "$tag" "$apk" \
+            --target "${{ github.sha }}" \
+            --title "TrackIt ${tag}" \
+            --generate-notes \
+            --latest
