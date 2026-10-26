@@ -53,16 +53,42 @@ class DatabaseService {
 
   Future<Database> _openDatabase() async {
     final databasePath = await getDatabasesPath();
-    final dbPath = path.join(databasePath, _databaseName);
+    return _open(path.join(databasePath, _databaseName));
+  }
 
-    return openDatabase(
-      dbPath,
-      version: _databaseVersion,
-      onConfigure: _configureDatabase,
-      onCreate: _createDatabase,
-      onUpgrade: _upgradeDatabase,
-      onOpen: _repairSchema,
+  Future<Database> _open(String dbPath) => openDatabase(
+    dbPath,
+    version: _databaseVersion,
+    onConfigure: _configureDatabase,
+    onCreate: _createDatabase,
+    onUpgrade: _upgradeDatabase,
+    onOpen: _repairSchema,
+  );
+
+  /// Tests: swap in a fresh in-memory database with the real schema, and
+  /// make every service use it.
+  @visibleForTesting
+  static Future<Database> openInMemoryForTesting() async {
+    sqfliteFfiInit();
+    // Assigning the global factory logs a warning; only do it once.
+    if (databaseFactoryOrNull != databaseFactoryFfi) {
+      databaseFactory = databaseFactoryFfi;
+    }
+    _initialized = true;
+    await _database?.close();
+    _database = await databaseFactory.openDatabase(
+      inMemoryDatabasePath,
+      options: OpenDatabaseOptions(
+        version: _databaseVersion,
+        onConfigure: _instance._configureDatabase,
+        onCreate: _instance._createDatabase,
+        onUpgrade: _instance._upgradeDatabase,
+        onOpen: _instance._repairSchema,
+        // A new, empty database per call rather than a shared one.
+        singleInstance: false,
+      ),
     );
+    return _database!;
   }
 
   Future<void> _configureDatabase(Database db) async {

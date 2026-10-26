@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'database_service.dart';
 import 'api_service.dart';
 import 'app_mode_service.dart';
+import 'coalescing_runner.dart';
 import 'sync_outbox.dart';
 import '../models/expenses.dart';
 import '../models/workouts.dart';
@@ -20,8 +21,7 @@ class SyncService {
   final DatabaseService _dbService = DatabaseService();
   final ApiService _apiService = ApiService();
 
-  Future<void>? _inFlight;
-  bool _syncAgain = false;
+  late final _runner = CoalescingRunner(_syncPass);
 
   static const _cursorPrefix = 'last_sync_';
 
@@ -124,28 +124,21 @@ class SyncService {
   Stream<void> get onSyncComplete => _syncComplete.stream;
   final _syncComplete = StreamController<void>.broadcast();
 
-  /// Perform full sync. Overlapping calls share one run: two concurrent
-  /// runs would both push the same rows and both insert the same pulled
-  /// rows (duplicates). A call made mid-run queues one more pass and
-  /// completes only after it, so awaiting callers always see fresh data.
+  /// Perform full sync. Overlapping calls share one run (see
+  /// [CoalescingRunner]): two concurrent runs would both push the same rows
+  /// and both insert the same pulled rows (duplicates). A call made mid-run
+  /// queues one more pass and completes only after it, so awaiting callers
+  /// always see fresh data.
   Future<void> performSync() {
     // Local mode never talks to a server.
     if (!AppModeService.isServer) return Future.value();
-    final inFlight = _inFlight;
-    if (inFlight != null) {
-      _syncAgain = true;
-      return inFlight;
-    }
-    return _inFlight = _drive().whenComplete(() => _inFlight = null);
+    return _runner.run();
   }
 
-  Future<void> _drive() async {
-    do {
-      _syncAgain = false;
-      if (!await isOnline()) return;
-      await _runSync();
-      _syncComplete.add(null);
-    } while (_syncAgain);
+  Future<void> _syncPass() async {
+    if (!await isOnline()) return;
+    await _runSync();
+    _syncComplete.add(null);
   }
 
   Future<void> _runSync() async {
@@ -310,53 +303,64 @@ class SyncService {
         'transactions',
       );
 
-      for (var data in remoteData) {
-        final remoteId = data['id'];
-        if (remoteId == null) continue;
+      await mergeRemoteExpenses(db, remoteData);
+      await _saveCursor('transactions', started);
+    } catch (e) {
+      debugPrint('Failed to fetch expenses from remote: $e');
+    }
+  }
 
-        if (_isTombstone(data)) {
-          await db.delete(
-            'expenses',
-            where: 'remote_id = ?',
-            whereArgs: [remoteId],
-          );
-          continue;
-        }
+  /// Merge pulled transactions into the local table: apply tombstones,
+  /// update rows known by server id (unless they have unpushed edits), link
+  /// rows we pushed ourselves by client id, and insert the rest.
+  @visibleForTesting
+  Future<void> mergeRemoteExpenses(
+    DatabaseExecutor db,
+    List<dynamic> remoteData,
+  ) async {
+    for (var data in remoteData) {
+      final remoteId = data['id'];
+      if (remoteId == null) continue;
 
-        final existing = await db.query(
+      if (_isTombstone(data)) {
+        await db.delete(
           'expenses',
           where: 'remote_id = ?',
           whereArgs: [remoteId],
         );
-
-        if (existing.isNotEmpty) {
-          // Take server-side edits, but never overwrite unsynced local ones.
-          if (existing.first['is_synced'] == 1) {
-            await db.update(
-              'expenses',
-              _expenseFromRemote(
-                data,
-                localTimestamp: existing.first['timestamp'] as String?,
-              ),
-              where: 'remote_id = ?',
-              whereArgs: [remoteId],
-            );
-          }
-          continue;
-        }
-
-        if (await _linkByClientId(db, 'expenses', data)) continue;
-
-        // Not known locally (matched by remote_id / client_id above):
-        // insert it. Never match on the local primary key, which is an
-        // unrelated autoincrement id that can collide with the server's.
-        final expenseMap = _expenseFromRemote(data);
-        expenseMap['uuid'] = data['client_id'];
-        await db.insert('expenses', expenseMap);
+        continue;
       }
-      await _saveCursor('transactions', started);
-    } catch (e) {
-      debugPrint('Failed to fetch expenses from remote: $e');
+
+      final existing = await db.query(
+        'expenses',
+        where: 'remote_id = ?',
+        whereArgs: [remoteId],
+      );
+
+      if (existing.isNotEmpty) {
+        // Take server-side edits, but never overwrite unsynced local ones.
+        if (existing.first['is_synced'] == 1) {
+          await db.update(
+            'expenses',
+            _expenseFromRemote(
+              data,
+              localTimestamp: existing.first['timestamp'] as String?,
+            ),
+            where: 'remote_id = ?',
+            whereArgs: [remoteId],
+          );
+        }
+        continue;
+      }
+
+      if (await _linkByClientId(db, 'expenses', data)) continue;
+
+      // Not known locally (matched by remote_id / client_id above):
+      // insert it. Never match on the local primary key, which is an
+      // unrelated autoincrement id that can collide with the server's.
+      final expenseMap = _expenseFromRemote(data);
+      expenseMap['uuid'] = data['client_id'];
+      await db.insert('expenses', expenseMap);
     }
   }
 
@@ -612,7 +616,8 @@ class SyncService {
   /// compare full ISO timestamps, so never store the bare date. Keep the
   /// local time when the day is unchanged, else use the server's
   /// `created_at` time on that day, else local midnight.
-  static String _timestampFromRemote(
+  @visibleForTesting
+  static String timestampFromRemote(
     Map<String, dynamic> data,
     String? localTimestamp,
   ) {
@@ -668,7 +673,7 @@ class SyncService {
     return {
       'amount': double.tryParse(data['amount'].toString()) ?? 0.0,
       'category': bucket,
-      'timestamp': _timestampFromRemote(data, localTimestamp),
+      'timestamp': timestampFromRemote(data, localTimestamp),
       'description': data['note'] ?? data['description'],
       'type': data['type'] ?? 'expense',
       'category_id': legacyName == null ? categoryId?.toString() : null,

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class ApiService {
@@ -25,6 +26,10 @@ class ApiService {
   static const String eventsPath = 'events/';
   static const String analyticsPath = 'analytics/';
 
+  /// Tests: route every request (including token refreshes) through a fake.
+  @visibleForTesting
+  static HttpClientAdapter? debugHttpAdapter;
+
   ApiService() {
     dio = Dio(
       BaseOptions(
@@ -34,6 +39,7 @@ class ApiService {
         contentType: 'application/json',
       ),
     );
+    if (debugHttpAdapter != null) dio.httpClientAdapter = debugHttpAdapter!;
 
     dio.interceptors.add(
       InterceptorsWrapper(
@@ -104,6 +110,7 @@ class ApiService {
         contentType: 'application/json',
       ),
     );
+    if (debugHttpAdapter != null) client.httpClientAdapter = debugHttpAdapter!;
     try {
       final response = await client.post(
         _refreshPath,
