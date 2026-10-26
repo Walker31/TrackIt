@@ -10,6 +10,7 @@ import 'coalescing_runner.dart';
 import 'sync_outbox.dart';
 import '../models/expenses.dart';
 import '../models/workouts.dart';
+import 'id_generator.dart';
 import 'package:sqflite/sqflite.dart'
     show ConflictAlgorithm, Database, DatabaseExecutor;
 
@@ -48,8 +49,11 @@ class SyncService {
 
   /// Record that everything changed before [startedAt] has been pulled. A
   /// few minutes of overlap absorbs clock skew; re-pulled rows are idempotent.
-  Future<void> _saveCursor(String entity, DateTime startedAt) async {
-    final db = await _dbService.getDatabase();
+  Future<void> _saveCursor(
+    DatabaseExecutor db,
+    String entity,
+    DateTime startedAt,
+  ) async {
     await db.insert('settings', {
       'key': '$_cursorPrefix$entity',
       'value': startedAt
@@ -147,8 +151,10 @@ class SyncService {
       // Replay queued deletes first so the pulls below can't resurrect them.
       await SyncOutbox.drain(_apiService);
       await _syncCatalog(); // categories/events first: transactions reference them
+      await _syncBudgets();
       await _syncExpenses();
       await _syncWorkouts();
+      await _syncRoutines();
       await _syncGroups();
       await _syncGroupMembers();
       await _syncGroupExpenses();
@@ -223,19 +229,10 @@ class SyncService {
         ApiService.categoriesPath,
         'categories',
       );
-      for (final data in remoteCategories) {
-        if (data['id'] == null || data['name'] == null) continue;
-        await db.insert('categories', {
-          'id': data['id'].toString(),
-          'user_id': data['user']?.toString() ?? data['user_id']?.toString(),
-          'name': data['name'],
-          'icon': data['icon'],
-          'color': data['color'],
-          'type': data['type'] ?? 'expense',
-          'is_default': (data['is_default'] == true) ? 1 : 0,
-        }, conflictAlgorithm: ConflictAlgorithm.ignore);
-      }
-      await _saveCursor('categories', started);
+      await db.transaction((txn) async {
+        await mergeRemoteCategories(txn, remoteCategories);
+        await _saveCursor(txn, 'categories', started);
+      });
     } catch (e) {
       debugPrint('Failed to fetch categories from remote: $e');
     }
@@ -244,20 +241,354 @@ class SyncService {
     try {
       final started = DateTime.now();
       final remoteEvents = await _fetchAll(ApiService.eventsPath, 'events');
-      for (final data in remoteEvents) {
-        if (data['id'] == null || data['title'] == null) continue;
-        await db.insert('events', {
-          'id': data['id'].toString(),
-          'title': data['title'],
-          'event_date': data['event_date'],
-          'end_date': data['end_date'],
-          'description': data['description'],
-          'is_synced': 1,
-        }, conflictAlgorithm: ConflictAlgorithm.ignore);
-      }
-      await _saveCursor('events', started);
+      await db.transaction((txn) async {
+        for (final data in remoteEvents) {
+          if (data['id'] == null || data['title'] == null) continue;
+          final row = {
+            'id': data['id'].toString(),
+            'title': data['title'],
+            'event_date': data['event_date'],
+            'end_date': data['end_date'],
+            'description': data['description'],
+            'is_synced': 1,
+          };
+          // Take server edits unless this device has an unpushed version.
+          final updated = await txn.update(
+            'events',
+            row,
+            where: 'id = ? AND is_synced = 1',
+            whereArgs: [row['id']],
+          );
+          if (updated == 0) {
+            await txn.insert(
+              'events',
+              row,
+              conflictAlgorithm: ConflictAlgorithm.ignore,
+            );
+          }
+        }
+        await _saveCursor(txn, 'events', started);
+      });
     } catch (e) {
       debugPrint('Failed to fetch events from remote: $e');
+    }
+
+    // Pull subcategories (read-only on the server).
+    try {
+      final started = DateTime.now();
+      final remoteSubs = await _fetchAll(
+        ApiService.subcategoriesPath,
+        'subcategories',
+      );
+      await db.transaction((txn) async {
+        await mergeRemoteSubcategories(txn, remoteSubs);
+        await _saveCursor(txn, 'subcategories', started);
+      });
+    } catch (e) {
+      debugPrint('Failed to fetch subcategories from remote: $e');
+    }
+  }
+
+  /// Apply pulled categories. Server edits win, except over custom
+  /// categories this device hasn't pushed yet (owner 'local').
+  @visibleForTesting
+  Future<void> mergeRemoteCategories(
+    DatabaseExecutor db,
+    List<dynamic> remoteCategories,
+  ) async {
+    for (final data in remoteCategories) {
+      if (data['id'] == null || data['name'] == null) continue;
+      final row = {
+        'id': data['id'].toString(),
+        'user_id': data['user']?.toString() ?? data['user_id']?.toString(),
+        'name': data['name'],
+        'icon': data['icon'],
+        'color': data['color'],
+        'type': data['type'] ?? 'expense',
+        'is_default': (data['is_default'] == true) ? 1 : 0,
+      };
+      // A rename that clashes with another category's name is skipped
+      // rather than failing the whole pull.
+      final updated = await db.update(
+        'categories',
+        row,
+        where: "id = ? AND (user_id IS NULL OR user_id != 'local')",
+        whereArgs: [row['id']],
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+      if (updated == 0) {
+        await db.insert(
+          'categories',
+          row,
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    }
+  }
+
+  /// Apply pulled subcategories, skipping any whose category isn't known
+  /// locally (the foreign key would reject them).
+  @visibleForTesting
+  Future<void> mergeRemoteSubcategories(
+    DatabaseExecutor db,
+    List<dynamic> remoteSubs,
+  ) async {
+    for (final data in remoteSubs) {
+      final id = data['id']?.toString();
+      final categoryId = (data['category'] ?? data['category_id'])?.toString();
+      if (id == null || categoryId == null || data['name'] == null) continue;
+      final known = await db.query(
+        'categories',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [categoryId],
+      );
+      if (known.isEmpty) continue;
+      final row = {'id': id, 'category_id': categoryId, 'name': data['name']};
+      final updated = await db.update(
+        'subcategories',
+        row,
+        where: 'id = ?',
+        whereArgs: [id],
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+      if (updated == 0) {
+        await db.insert(
+          'subcategories',
+          row,
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    }
+  }
+
+  /// Sync per-category monthly budgets. Ids are generated on the device;
+  /// the server upserts by id or by category and month, and may answer
+  /// with the id another device already used for that slot.
+  Future<void> _syncBudgets() async {
+    final db = await _dbService.getDatabase();
+
+    for (final row in await db.query('budgets', where: 'is_synced = 0')) {
+      final localId = row['id'] as String;
+      try {
+        final response = await _apiService.post(
+          ApiService.budgetsPath,
+          data: {
+            'id': localId,
+            'category': row['category_id'],
+            'month': row['month'],
+            'limit_amount': row['limit_amount'],
+          },
+        );
+        final serverId = response.data['id']?.toString() ?? localId;
+        await db.transaction((txn) async {
+          if (serverId != localId) {
+            // Adopt the server's id for this category and month.
+            await txn.delete('budgets', where: 'id = ?', whereArgs: [serverId]);
+            await txn.update(
+              'budgets',
+              {'id': serverId},
+              where: 'id = ?',
+              whereArgs: [localId],
+            );
+          }
+          // Only if unchanged since the push; an edit made meanwhile
+          // stays dirty for the next sync.
+          await txn.update(
+            'budgets',
+            {'is_synced': 1},
+            where: 'id = ? AND limit_amount = ?',
+            whereArgs: [serverId, row['limit_amount']],
+          );
+        });
+      } catch (e) {
+        debugPrint('Failed to sync budget $localId: $e');
+      }
+    }
+
+    try {
+      final started = DateTime.now();
+      final remote = await _fetchAll(ApiService.budgetsPath, 'budgets');
+      await db.transaction((txn) async {
+        await mergeRemoteBudgets(txn, remote);
+        await _saveCursor(txn, 'budgets', started);
+      });
+    } catch (e) {
+      debugPrint('Failed to fetch budgets from remote: $e');
+    }
+  }
+
+  /// Merge pulled budgets. Unpushed local budgets win: their push will
+  /// update the server (or adopt its row for the same category and month).
+  @visibleForTesting
+  Future<void> mergeRemoteBudgets(
+    DatabaseExecutor db,
+    List<dynamic> remote,
+  ) async {
+    for (final data in remote) {
+      final id = data['id']?.toString();
+      final categoryId = (data['category'] ?? data['category_id'])?.toString();
+      final month = data['month']?.toString();
+      if (id == null || categoryId == null || month == null) continue;
+
+      if (_isTombstone(data)) {
+        await db.delete(
+          'budgets',
+          where: 'id = ? AND is_synced = 1',
+          whereArgs: [id],
+        );
+        continue;
+      }
+
+      final dirty = await db.query(
+        'budgets',
+        columns: ['id'],
+        where: 'is_synced = 0 AND (id = ? OR (category_id = ? AND month = ?))',
+        whereArgs: [id, categoryId, month],
+      );
+      if (dirty.isNotEmpty) continue;
+
+      final category = await db.query(
+        'categories',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [categoryId],
+      );
+      if (category.isEmpty) continue;
+
+      // Replacing also drops a synced row holding the same category and
+      // month under another id.
+      await db.insert('budgets', {
+        'id': id,
+        'category_id': categoryId,
+        'month': month,
+        'limit_amount': double.tryParse(data['limit_amount'].toString()) ?? 0,
+        'is_synced': 1,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+  }
+
+  /// Sync workout routines, sent whole (with their exercises) like workouts.
+  Future<void> _syncRoutines() async {
+    final db = await _dbService.getDatabase();
+
+    for (final map in await db.query('routines', where: 'is_synced = 0')) {
+      final routineId = map['id'] as int;
+      try {
+        final exercises = await db.query(
+          'routine_exercises',
+          where: 'routine_id = ?',
+          whereArgs: [routineId],
+          orderBy: 'id ASC',
+        );
+        final payload = {
+          'name': map['name'],
+          'type': map['type'],
+          'client_id': map['uuid'],
+          'routine_exercises': [
+            for (final e in exercises)
+              {
+                'name': e['name'],
+                'muscle_group': e['muscle_group'],
+                'sets_count': e['sets_count'],
+              },
+          ],
+        };
+        final existingRemoteId = map['remote_id'];
+        final response = existingRemoteId == null
+            ? await _apiService.post(ApiService.routinesPath, data: payload)
+            : await _apiService.put(
+                '${ApiService.routinesPath}$existingRemoteId/',
+                data: payload,
+              );
+        await db.update(
+          'routines',
+          {
+            'remote_id': response.data['id'] ?? existingRemoteId,
+            'is_synced': 1,
+          },
+          where: 'id = ?',
+          whereArgs: [routineId],
+        );
+      } catch (e) {
+        debugPrint('Failed to sync routine $routineId: $e');
+      }
+    }
+
+    try {
+      final started = DateTime.now();
+      final remote = await _fetchAll(ApiService.routinesPath, 'routines');
+      await db.transaction((txn) async {
+        await mergeRemoteRoutines(txn, remote);
+        await _saveCursor(txn, 'routines', started);
+      });
+    } catch (e) {
+      debugPrint('Failed to fetch routines from remote: $e');
+    }
+  }
+
+  /// Merge pulled routines: tombstones delete, synced local copies take the
+  /// server's version (exercises included), routines we pushed ourselves
+  /// are linked by client id, and the rest are inserted.
+  @visibleForTesting
+  Future<void> mergeRemoteRoutines(
+    DatabaseExecutor db,
+    List<dynamic> remote,
+  ) async {
+    for (final data in remote) {
+      final remoteId = data['id'];
+      if (remoteId == null) continue;
+
+      if (_isTombstone(data)) {
+        await db.delete(
+          'routines',
+          where: 'remote_id = ?',
+          whereArgs: [remoteId],
+        );
+        continue;
+      }
+
+      final existing = await db.query(
+        'routines',
+        columns: ['id', 'is_synced'],
+        where: 'remote_id = ?',
+        whereArgs: [remoteId],
+      );
+      if (existing.isEmpty && await _linkByClientId(db, 'routines', data)) {
+        continue;
+      }
+      if (existing.isNotEmpty && existing.first['is_synced'] != 1) continue;
+
+      final row = {'name': data['name'], 'type': data['type'], 'is_synced': 1};
+      final int localId;
+      if (existing.isNotEmpty) {
+        localId = existing.first['id'] as int;
+        await db.update('routines', row, where: 'id = ?', whereArgs: [localId]);
+        await db.delete(
+          'routine_exercises',
+          where: 'routine_id = ?',
+          whereArgs: [localId],
+        );
+      } else {
+        localId = await db.insert('routines', {
+          ...row,
+          'uuid': IdGenerator.orNew(data['client_id']),
+          'remote_id': remoteId,
+        });
+      }
+
+      final exercises = data['routine_exercises'];
+      if (exercises is List) {
+        for (final e in exercises) {
+          if (e is! Map<String, dynamic>) continue;
+          await db.insert('routine_exercises', {
+            'routine_id': localId,
+            'name': e['name'],
+            'muscle_group': e['muscle_group'],
+            'sets_count': e['sets_count'],
+          });
+        }
+      }
     }
   }
 
@@ -303,8 +634,12 @@ class SyncService {
         'transactions',
       );
 
-      await mergeRemoteExpenses(db, remoteData);
-      await _saveCursor('transactions', started);
+      // One transaction per pull: far fewer disk syncs (and, on web,
+      // worker round trips) than committing every row on its own.
+      await db.transaction((txn) async {
+        await mergeRemoteExpenses(txn, remoteData);
+        await _saveCursor(txn, 'transactions', started);
+      });
     } catch (e) {
       debugPrint('Failed to fetch expenses from remote: $e');
     }
@@ -359,7 +694,7 @@ class SyncService {
       // insert it. Never match on the local primary key, which is an
       // unrelated autoincrement id that can collide with the server's.
       final expenseMap = _expenseFromRemote(data);
-      expenseMap['uuid'] = data['client_id'];
+      expenseMap['uuid'] = IdGenerator.orNew(data['client_id']);
       await db.insert('expenses', expenseMap);
     }
   }
@@ -413,44 +748,46 @@ class SyncService {
       final started = DateTime.now();
       final remoteData = await _fetchAll('fitness/workouts/', 'workouts');
 
-      for (var data in remoteData) {
-        final remoteId = data['id'];
-        if (remoteId == null) continue;
+      await db.transaction((txn) async {
+        for (var data in remoteData) {
+          final remoteId = data['id'];
+          if (remoteId == null) continue;
 
-        if (_isTombstone(data)) {
-          await db.delete(
+          if (_isTombstone(data)) {
+            await txn.delete(
+              'workouts',
+              where: 'remote_id = ?',
+              whereArgs: [remoteId],
+            );
+            continue;
+          }
+
+          final existing = await txn.query(
             'workouts',
             where: 'remote_id = ?',
             whereArgs: [remoteId],
           );
-          continue;
-        }
 
-        final existing = await db.query(
-          'workouts',
-          where: 'remote_id = ?',
-          whereArgs: [remoteId],
-        );
-
-        if (existing.isNotEmpty) {
-          // Take edits made on another device, unless this one has
-          // unpushed changes of its own (last write wins on push).
-          if (existing.first['is_synced'] == 1) {
-            await _updateRemoteWorkoutLocally(
-              db,
-              existing.first['id'] as int,
-              data,
-            );
+          if (existing.isNotEmpty) {
+            // Take edits made on another device, unless this one has
+            // unpushed changes of its own (last write wins on push).
+            if (existing.first['is_synced'] == 1) {
+              await _updateRemoteWorkoutLocally(
+                txn,
+                existing.first['id'] as int,
+                data,
+              );
+            }
+            continue;
           }
-          continue;
-        }
 
-        if (!await _linkByClientId(db, 'workouts', data)) {
-          // Save remote workout and its children locally
-          await _saveRemoteWorkoutLocally(data);
+          if (!await _linkByClientId(txn, 'workouts', data)) {
+            // Save remote workout and its children locally
+            await _saveRemoteWorkoutLocally(txn, data);
+          }
         }
-      }
-      await _saveCursor('workouts', started);
+        await _saveCursor(txn, 'workouts', started);
+      });
     } catch (e) {
       debugPrint('Failed to fetch workouts from remote: $e');
     }
@@ -462,8 +799,13 @@ class SyncService {
     return parsed?.toLocal().toIso8601String() ?? raw?.toString();
   }
 
-  Future<List<Exercise>> _loadFullWorkoutData(int workoutId) async {
-    final db = await _dbService.getDatabase();
+  /// Pass [executor] when called inside a transaction: going through the
+  /// plain database there would wait on that transaction forever.
+  Future<List<Exercise>> _loadFullWorkoutData(
+    int workoutId, [
+    DatabaseExecutor? executor,
+  ]) async {
+    final db = executor ?? await _dbService.getDatabase();
     final exerciseMaps = await db.query(
       'exercises',
       where: 'workout_id = ?',
@@ -485,13 +827,15 @@ class SyncService {
     return exercises;
   }
 
-  Future<void> _saveRemoteWorkoutLocally(Map<String, dynamic> data) async {
-    final db = await _dbService.getDatabase();
+  Future<void> _saveRemoteWorkoutLocally(
+    DatabaseExecutor db,
+    Map<String, dynamic> data,
+  ) async {
     final workoutMap = {
       'type': data['type'],
       'timestamp': _localTimestamp(data['timestamp']),
       'notes': data['notes'],
-      'uuid': data['client_id'],
+      'uuid': IdGenerator.orNew(data['client_id']),
       'remote_id': data['id'],
       'is_synced': 1,
     };
@@ -521,7 +865,7 @@ class SyncService {
 
     final remote = data['exercises'];
     if (remote is! List) return;
-    final local = await _loadFullWorkoutData(localWorkoutId);
+    final local = await _loadFullWorkoutData(localWorkoutId, db);
     final remoteContent = remote
         .whereType<Map<String, dynamic>>()
         .map(
@@ -564,6 +908,7 @@ class SyncService {
         if (exData is! Map<String, dynamic>) continue;
 
         final exMap = {
+          'uuid': IdGenerator.uuid(),
           'workout_id': localWorkoutId,
           'name': exData['name'],
           'muscle_group': exData['muscle_group'],
@@ -579,6 +924,7 @@ class SyncService {
             if (setData is! Map<String, dynamic>) continue;
 
             final sMap = {
+              'uuid': IdGenerator.uuid(),
               'exercise_id': localExId,
               'set_number': setData['set_number'],
               'weight': double.tryParse(setData['weight'].toString()) ?? 0.0,
@@ -694,15 +1040,20 @@ class SyncService {
     final unsynced = await db.query('groups', where: 'is_synced = 0');
     for (var map in unsynced) {
       try {
-        final response = await _apiService.post(
-          'groups/groups/',
-          data: {
-            'name': map['name'],
-            'icon': map['icon'],
-            'client_id': map['uuid'],
-          },
-        );
-        final remoteId = response.data['id'];
+        // A group the server already has was renamed: update it in place.
+        final existingRemoteId = map['remote_id'];
+        final payload = {
+          'name': map['name'],
+          'icon': map['icon'],
+          'client_id': map['uuid'],
+        };
+        final response = existingRemoteId != null
+            ? await _apiService.put(
+                'groups/groups/$existingRemoteId/',
+                data: payload,
+              )
+            : await _apiService.post('groups/groups/', data: payload);
+        final remoteId = response.data['id'] ?? existingRemoteId;
         await db.update(
           'groups',
           {'remote_id': remoteId, 'is_synced': 1},
@@ -713,7 +1064,7 @@ class SyncService {
         // The owner membership was auto-created server-side; reconcile it.
         final remoteMemberships = response.data['memberships'];
         if (remoteMemberships is List) {
-          await _reconcileMemberships(map['id'] as int, remoteMemberships);
+          await _reconcileMemberships(db, map['id'] as int, remoteMemberships);
         }
       } catch (e) {
         debugPrint('Failed to sync group ${map['id']}: $e');
@@ -723,62 +1074,82 @@ class SyncService {
     try {
       final started = DateTime.now();
       final remoteGroups = await _fetchAll('groups/groups/', 'groups');
+      await db.transaction((txn) async {
+        await mergeRemoteGroups(txn, remoteGroups);
+        await _saveCursor(txn, 'groups', started);
+      });
+    } catch (e) {
+      debugPrint('Failed to fetch groups from remote: $e');
+    }
+  }
 
-      for (var data in remoteGroups) {
-        final remoteId = data['id'];
-        if (remoteId == null) continue;
+  /// Merge pulled groups: tombstones remove the group (its members,
+  /// expenses and settlements cascade), known groups take the server's
+  /// name and icon, and new ones are inserted.
+  @visibleForTesting
+  Future<void> mergeRemoteGroups(
+    DatabaseExecutor db,
+    List<dynamic> remoteGroups,
+  ) async {
+    for (var data in remoteGroups) {
+      final remoteId = data['id'];
+      if (remoteId == null) continue;
 
-        var existing = await db.query(
+      if (_isTombstone(data)) {
+        await db.delete(
           'groups',
           where: 'remote_id = ?',
           whereArgs: [remoteId],
         );
-        if (existing.isEmpty && await _linkByClientId(db, 'groups', data)) {
-          existing = await db.query(
-            'groups',
-            where: 'remote_id = ?',
-            whereArgs: [remoteId],
-          );
-        }
-        int localGroupId;
-        if (existing.isEmpty) {
-          localGroupId = await db.insert('groups', {
-            'uuid': data['client_id'],
-            'remote_id': remoteId,
-            'name': data['name'],
-            'icon': data['icon'],
-            'created_at': data['created_at'],
-            'is_synced': 1,
-          });
-        } else {
-          localGroupId = existing.first['id'] as int;
-          await db.update(
-            'groups',
-            {'name': data['name'], 'icon': data['icon']},
-            where: 'id = ?',
-            whereArgs: [localGroupId],
-          );
-        }
-
-        final memberships = data['memberships'];
-        if (memberships is List) {
-          await _reconcileMemberships(localGroupId, memberships);
-        }
+        continue;
       }
-      await _saveCursor('groups', started);
-    } catch (e) {
-      debugPrint('Failed to fetch groups from remote: $e');
+
+      var existing = await db.query(
+        'groups',
+        where: 'remote_id = ?',
+        whereArgs: [remoteId],
+      );
+      if (existing.isEmpty && await _linkByClientId(db, 'groups', data)) {
+        existing = await db.query(
+          'groups',
+          where: 'remote_id = ?',
+          whereArgs: [remoteId],
+        );
+      }
+      int localGroupId;
+      if (existing.isEmpty) {
+        localGroupId = await db.insert('groups', {
+          'uuid': IdGenerator.orNew(data['client_id']),
+          'remote_id': remoteId,
+          'name': data['name'],
+          'icon': data['icon'],
+          'created_at': data['created_at'],
+          'is_synced': 1,
+        });
+      } else {
+        localGroupId = existing.first['id'] as int;
+        await db.update(
+          'groups',
+          {'name': data['name'], 'icon': data['icon']},
+          where: 'id = ?',
+          whereArgs: [localGroupId],
+        );
+      }
+
+      final memberships = data['memberships'];
+      if (memberships is List) {
+        await _reconcileMemberships(db, localGroupId, memberships);
+      }
     }
   }
 
   /// Reconcile a group's memberships against the server's list, inserting
   /// any member rows we don't have locally yet and stamping remote ids.
   Future<void> _reconcileMemberships(
+    DatabaseExecutor db,
     int localGroupId,
     List remoteMemberships,
   ) async {
-    final db = await _dbService.getDatabase();
-
     for (final m in remoteMemberships) {
       if (m is! Map<String, dynamic>) continue;
       final remoteMemberId = m['id'];
@@ -824,6 +1195,7 @@ class SyncService {
         );
       } else {
         await db.insert('group_members', {
+          'uuid': IdGenerator.uuid(),
           'remote_id': remoteMemberId,
           'group_id': localGroupId,
           'user_id': m['user'],
@@ -989,25 +1361,33 @@ class SyncService {
       if (!allMembersSynced) continue;
 
       try {
-        final response = await _apiService.post(
-          'groups/group-expenses/',
-          data: {
-            'group': groupRemoteId,
-            'payer': payerRemoteId,
-            'amount': map['amount'],
-            'category': map['category'],
-            'description': map['description'],
-            'timestamp': map['timestamp'],
-            'receipt_url': map['receipt_url'],
-            'split_type': map['split_type'],
-            'client_id': map['uuid'],
-            'splits': splitPayload,
-          },
-        );
+        final payload = {
+          'group': groupRemoteId,
+          'payer': payerRemoteId,
+          'amount': map['amount'],
+          'category': map['category'],
+          'description': map['description'],
+          'timestamp': map['timestamp'],
+          'receipt_url': map['receipt_url'],
+          'split_type': map['split_type'],
+          'client_id': map['uuid'],
+          'splits': splitPayload,
+        };
+        // Edited after it was pushed: replace it (splits included).
+        final existingRemoteId = map['remote_id'];
+        final response = existingRemoteId != null
+            ? await _apiService.put(
+                'groups/group-expenses/$existingRemoteId/',
+                data: payload,
+              )
+            : await _apiService.post('groups/group-expenses/', data: payload);
 
         await db.update(
           'group_expenses',
-          {'remote_id': response.data['id'], 'is_synced': 1},
+          {
+            'remote_id': response.data['id'] ?? existingRemoteId,
+            'is_synced': 1,
+          },
           where: 'id = ?',
           whereArgs: [localExpenseId],
         );
@@ -1037,67 +1417,181 @@ class SyncService {
         'group_expenses',
       );
 
-      for (var data in remoteData) {
-        final remoteId = data['id'];
-        if (remoteId == null) continue;
+      await db.transaction((txn) async {
+        await mergeRemoteGroupExpenses(txn, remoteData);
+        await _saveCursor(txn, 'group_expenses', started);
+      });
+    } catch (e) {
+      debugPrint('Failed to fetch group expenses from remote: $e');
+    }
+  }
 
-        final existing = await db.query(
+  /// Local id of the row in [table] with server id [remoteId], or null.
+  Future<int?> _localIdFor(
+    DatabaseExecutor db,
+    String table,
+    Object? remoteId,
+  ) async {
+    if (remoteId == null) return null;
+    final rows = await db.query(
+      table,
+      columns: ['id'],
+      where: 'remote_id = ?',
+      whereArgs: [remoteId],
+    );
+    return rows.isEmpty ? null : rows.first['id'] as int;
+  }
+
+  /// Merge pulled group expenses: tombstones delete, synced local copies
+  /// take server edits (splits included), unpushed local edits are kept,
+  /// and unknown expenses are inserted.
+  @visibleForTesting
+  Future<void> mergeRemoteGroupExpenses(
+    DatabaseExecutor db,
+    List<dynamic> remoteData,
+  ) async {
+    for (var data in remoteData) {
+      final remoteId = data['id'];
+      if (remoteId == null) continue;
+
+      if (_isTombstone(data)) {
+        await db.delete(
           'group_expenses',
           where: 'remote_id = ?',
           whereArgs: [remoteId],
         );
-        if (existing.isNotEmpty) continue;
-        if (await _linkByClientId(db, 'group_expenses', data)) continue;
+        continue;
+      }
 
-        final groupRow = await db.query(
-          'groups',
-          where: 'remote_id = ?',
-          whereArgs: [data['group']],
-        );
-        final payerRow = await db.query(
-          'group_members',
-          where: 'remote_id = ?',
-          whereArgs: [data['payer']],
-        );
-        if (groupRow.isEmpty || payerRow.isEmpty) continue;
+      final existing = await db.query(
+        'group_expenses',
+        columns: ['id', 'is_synced'],
+        where: 'remote_id = ?',
+        whereArgs: [remoteId],
+      );
+      if (existing.isEmpty &&
+          await _linkByClientId(db, 'group_expenses', data)) {
+        continue;
+      }
+      if (existing.isNotEmpty && existing.first['is_synced'] != 1) continue;
 
-        final localExpenseId = await db.insert('group_expenses', {
-          'uuid': data['client_id'],
+      final groupId = await _localIdFor(db, 'groups', data['group']);
+      final payerId = await _localIdFor(db, 'group_members', data['payer']);
+      if (groupId == null || payerId == null) continue;
+
+      final row = {
+        'group_id': groupId,
+        'payer_member_id': payerId,
+        'amount': double.tryParse(data['amount'].toString()) ?? 0.0,
+        'category': data['category'],
+        'description': data['description'],
+        'timestamp': data['timestamp'],
+        'receipt_url': data['receipt_url'],
+        'split_type': data['split_type'],
+        'is_synced': 1,
+      };
+
+      final int localExpenseId;
+      if (existing.isNotEmpty) {
+        localExpenseId = existing.first['id'] as int;
+        await db.update(
+          'group_expenses',
+          row,
+          where: 'id = ?',
+          whereArgs: [localExpenseId],
+        );
+        await db.delete(
+          'group_expense_splits',
+          where: 'expense_id = ?',
+          whereArgs: [localExpenseId],
+        );
+      } else {
+        localExpenseId = await db.insert('group_expenses', {
+          ...row,
+          'uuid': IdGenerator.orNew(data['client_id']),
           'remote_id': remoteId,
-          'group_id': groupRow.first['id'],
-          'payer_member_id': payerRow.first['id'],
-          'amount': double.tryParse(data['amount'].toString()) ?? 0.0,
-          'category': data['category'],
-          'description': data['description'],
-          'timestamp': data['timestamp'],
-          'receipt_url': data['receipt_url'],
-          'split_type': data['split_type'],
-          'is_synced': 1,
         });
+      }
 
-        final splits = data['splits'];
-        if (splits is List) {
-          for (final s in splits) {
-            if (s is! Map<String, dynamic>) continue;
-            final memberRow = await db.query(
-              'group_members',
-              where: 'remote_id = ?',
-              whereArgs: [s['member']],
-            );
-            if (memberRow.isEmpty) continue;
-            await db.insert('group_expense_splits', {
-              'remote_id': s['id'],
-              'expense_id': localExpenseId,
-              'member_id': memberRow.first['id'],
-              'share_amount':
-                  double.tryParse(s['share_amount'].toString()) ?? 0.0,
-            });
-          }
+      final splits = data['splits'];
+      if (splits is List) {
+        for (final s in splits) {
+          if (s is! Map<String, dynamic>) continue;
+          final memberId = await _localIdFor(db, 'group_members', s['member']);
+          if (memberId == null) continue;
+          await db.insert('group_expense_splits', {
+            'remote_id': s['id'],
+            'expense_id': localExpenseId,
+            'member_id': memberId,
+            'share_amount':
+                double.tryParse(s['share_amount'].toString()) ?? 0.0,
+          });
         }
       }
-      await _saveCursor('group_expenses', started);
-    } catch (e) {
-      debugPrint('Failed to fetch group expenses from remote: $e');
+    }
+  }
+
+  /// Merge pulled settlements, the same way as group expenses.
+  @visibleForTesting
+  Future<void> mergeRemoteSettlements(
+    DatabaseExecutor db,
+    List<dynamic> remoteData,
+  ) async {
+    for (var data in remoteData) {
+      final remoteId = data['id'];
+      if (remoteId == null) continue;
+
+      if (_isTombstone(data)) {
+        await db.delete(
+          'settlements',
+          where: 'remote_id = ?',
+          whereArgs: [remoteId],
+        );
+        continue;
+      }
+
+      final existing = await db.query(
+        'settlements',
+        columns: ['id', 'is_synced'],
+        where: 'remote_id = ?',
+        whereArgs: [remoteId],
+      );
+      if (existing.isEmpty && await _linkByClientId(db, 'settlements', data)) {
+        continue;
+      }
+      if (existing.isNotEmpty && existing.first['is_synced'] != 1) continue;
+
+      final groupId = await _localIdFor(db, 'groups', data['group']);
+      final fromId = await _localIdFor(
+        db,
+        'group_members',
+        data['from_member'],
+      );
+      final toId = await _localIdFor(db, 'group_members', data['to_member']);
+      if (groupId == null || fromId == null || toId == null) continue;
+
+      final row = {
+        'group_id': groupId,
+        'from_member_id': fromId,
+        'to_member_id': toId,
+        'amount': double.tryParse(data['amount'].toString()) ?? 0.0,
+        'timestamp': data['timestamp'],
+        'is_synced': 1,
+      };
+      if (existing.isNotEmpty) {
+        await db.update(
+          'settlements',
+          row,
+          where: 'id = ?',
+          whereArgs: [existing.first['id']],
+        );
+      } else {
+        await db.insert('settlements', {
+          ...row,
+          'uuid': IdGenerator.orNew(data['client_id']),
+          'remote_id': remoteId,
+        });
+      }
     }
   }
 
@@ -1132,20 +1626,27 @@ class SyncService {
       }
 
       try {
-        final response = await _apiService.post(
-          'groups/settlements/',
-          data: {
-            'group': groupRemoteId,
-            'from_member': fromRemoteId,
-            'to_member': toRemoteId,
-            'amount': map['amount'],
-            'timestamp': map['timestamp'],
-            'client_id': map['uuid'],
-          },
-        );
+        final payload = {
+          'group': groupRemoteId,
+          'from_member': fromRemoteId,
+          'to_member': toRemoteId,
+          'amount': map['amount'],
+          'timestamp': map['timestamp'],
+          'client_id': map['uuid'],
+        };
+        final existingRemoteId = map['remote_id'];
+        final response = existingRemoteId != null
+            ? await _apiService.put(
+                'groups/settlements/$existingRemoteId/',
+                data: payload,
+              )
+            : await _apiService.post('groups/settlements/', data: payload);
         await db.update(
           'settlements',
-          {'remote_id': response.data['id'], 'is_synced': 1},
+          {
+            'remote_id': response.data['id'] ?? existingRemoteId,
+            'is_synced': 1,
+          },
           where: 'id = ?',
           whereArgs: [map['id']],
         );
@@ -1158,47 +1659,10 @@ class SyncService {
       final started = DateTime.now();
       final remoteData = await _fetchAll('groups/settlements/', 'settlements');
 
-      for (var data in remoteData) {
-        final remoteId = data['id'];
-        if (remoteId == null) continue;
-
-        final existing = await db.query(
-          'settlements',
-          where: 'remote_id = ?',
-          whereArgs: [remoteId],
-        );
-        if (existing.isNotEmpty) continue;
-        if (await _linkByClientId(db, 'settlements', data)) continue;
-
-        final groupRow = await db.query(
-          'groups',
-          where: 'remote_id = ?',
-          whereArgs: [data['group']],
-        );
-        final fromRow = await db.query(
-          'group_members',
-          where: 'remote_id = ?',
-          whereArgs: [data['from_member']],
-        );
-        final toRow = await db.query(
-          'group_members',
-          where: 'remote_id = ?',
-          whereArgs: [data['to_member']],
-        );
-        if (groupRow.isEmpty || fromRow.isEmpty || toRow.isEmpty) continue;
-
-        await db.insert('settlements', {
-          'uuid': data['client_id'],
-          'remote_id': remoteId,
-          'group_id': groupRow.first['id'],
-          'from_member_id': fromRow.first['id'],
-          'to_member_id': toRow.first['id'],
-          'amount': double.tryParse(data['amount'].toString()) ?? 0.0,
-          'timestamp': data['timestamp'],
-          'is_synced': 1,
-        });
-      }
-      await _saveCursor('settlements', started);
+      await db.transaction((txn) async {
+        await mergeRemoteSettlements(txn, remoteData);
+        await _saveCursor(txn, 'settlements', started);
+      });
     } catch (e) {
       debugPrint('Failed to fetch settlements from remote: $e');
     }

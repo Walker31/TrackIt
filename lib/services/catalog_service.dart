@@ -1,19 +1,16 @@
 import 'package:sqflite/sqflite.dart';
 import '../models/expenses.dart';
+import 'api_service.dart';
+import 'app_mode_service.dart';
 import 'database_service.dart';
+import 'sync_outbox.dart';
+import 'sync_service.dart';
+import 'id_generator.dart';
 
 /// Local access to the blueprint's reference data: categories,
 /// subcategories, events and per-category monthly budgets.
 class CatalogService {
   final DatabaseService _dbService = DatabaseService();
-
-  static String newId() {
-    // RFC 4122 v4-shaped id without an extra dependency.
-    final now = DateTime.now().microsecondsSinceEpoch;
-    final r = (now * 2654435761) & 0xFFFFFFFF;
-    String h(int v, int n) => v.toRadixString(16).padLeft(n, '0');
-    return '${h(now & 0xFFFFFFFF, 8)}-${h((now >> 32) & 0xFFFF, 4)}-4${h(r & 0xFFF, 3)}-a${h((r >> 12) & 0xFFF, 3)}-${h(now & 0xFFFFFFFFFFFF, 12)}';
-  }
 
   Future<List<Category>> getCategories({TxnType? type}) async {
     final db = await _dbService.getDatabase();
@@ -45,7 +42,7 @@ class CatalogService {
   }) async {
     final db = await _dbService.getDatabase();
     final category = Category(
-      id: newId(),
+      id: IdGenerator.uuid(),
       userId: 'local',
       name: name,
       icon: icon ?? 'dots',
@@ -53,12 +50,17 @@ class CatalogService {
       type: type,
     );
     await db.insert('categories', category.toMap());
+    SyncService().performSync();
     return category;
   }
 
   Future<Subcategory> addSubcategory(String categoryId, String name) async {
     final db = await _dbService.getDatabase();
-    final sub = Subcategory(id: newId(), categoryId: categoryId, name: name);
+    final sub = Subcategory(
+      id: IdGenerator.subcategoryId(categoryId, name),
+      categoryId: categoryId,
+      name: name,
+    );
     await db.insert(
       'subcategories',
       sub.toMap(),
@@ -83,13 +85,14 @@ class CatalogService {
   }) async {
     final db = await _dbService.getDatabase();
     final event = SpendEvent(
-      id: newId(),
+      id: IdGenerator.uuid(),
       title: title,
       eventDate: eventDate ?? DateTime.now(),
       endDate: endDate,
       description: description,
     );
     await db.insert('events', event.toMap());
+    SyncService().performSync();
     return event;
   }
 
@@ -127,16 +130,18 @@ class CatalogService {
     final db = await _dbService.getDatabase();
     final existing = await getBudget(categoryId, month);
     final budget = Budget(
-      id: existing?.id ?? newId(),
+      id: existing?.id ?? IdGenerator.uuid(),
       categoryId: categoryId,
       month: month,
       limitAmount: limitAmount,
     );
+    // Replacing resets is_synced to 0, so the next sync pushes it.
     await db.insert(
       'budgets',
       budget.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    SyncService().performSync();
   }
 
   /// Expense totals per category for an event.
@@ -166,7 +171,18 @@ class CatalogService {
 
   Future<void> deleteBudget(String budgetId) async {
     final db = await _dbService.getDatabase();
-    await db.delete('budgets', where: 'id = ?', whereArgs: [budgetId]);
+    await db.transaction((txn) async {
+      // The server may have it even if a later edit isn't pushed yet; a
+      // delete it doesn't know (404) is dropped from the queue.
+      if (AppModeService.isServer) {
+        await SyncOutbox.enqueueDelete(
+          txn,
+          '${ApiService.budgetsPath}$budgetId/',
+        );
+      }
+      await txn.delete('budgets', where: 'id = ?', whereArgs: [budgetId]);
+    });
+    SyncService().performSync();
   }
 
   /// Expense totals per category id for a calendar month.

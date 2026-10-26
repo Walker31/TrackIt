@@ -62,17 +62,19 @@ class WorkoutProvider extends ChangeNotifier {
     super.dispose();
   }
 
+  /// Show what's on the device straight away, then sync. Completes after
+  /// the sync (for pull-to-refresh); [onSyncComplete] reloads the result.
   Future<void> refreshData() async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      await SyncService().performSync();
       await _reload(notify: false);
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+    await SyncService().performSync();
   }
 
   /// Re-read today's session and routines from the local database.
@@ -104,7 +106,12 @@ class WorkoutProvider extends ChangeNotifier {
 
   Future<void> addRoutine(Routine routine) async {
     await _service.addRoutine(routine);
-    await refreshData();
+    await _reload();
+  }
+
+  Future<void> deleteRoutine(int routineId) async {
+    await _service.deleteRoutine(routineId);
+    await _reload();
   }
 
   Future<void> startWorkoutFromRoutine(Routine routine) async {
@@ -123,18 +130,18 @@ class WorkoutProvider extends ChangeNotifier {
       _todayWorkout = workout;
     }
     await _service.addExercise(exercise.copyWith(workoutId: workout.id));
-    await refreshData();
+    await _reload();
   }
 
   Future<void> addSet(SetData setData) async {
     await _service.addSet(setData);
-    await refreshData();
+    await _reload();
   }
 
   Future<void> completeSet(int setId, double weight, int reps) async {
-    await _service.updateSet(setId, weight, reps);
-    await _service.completeSet(setId);
-    await refreshData();
+    // Writes are local; the service syncs in the background.
+    await _service.completeSet(setId, weight: weight, reps: reps);
+    await _reload();
     HapticFeedback.mediumImpact(); // Feedback on set completion
     startRestTimer(); // Start timer after completion
   }

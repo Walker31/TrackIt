@@ -157,6 +157,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
         padding: EdgeInsets.only(bottom: Responsive.navInset(context)),
         child: FloatingActionButton(
           onPressed: () => _showAddExerciseSheet(context),
+          tooltip: 'Add Exercise',
           backgroundColor: AppColors.primary,
           child: const Icon(Icons.add),
         ),

@@ -1,20 +1,22 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../models/expenses.dart';
 import '../theme/app_colors.dart';
+
+/// One slice: its color and amount.
+typedef DonutSegment = ({Color color, double value});
 
 /// A donut chart of category spend, animating its arcs in on first paint.
 /// Segments get a small gap between them (dataviz mark spec: a visible
 /// surface gap between adjacent fills) so slices read as distinct even
 /// before color is considered.
 class DonutChart extends StatefulWidget {
-  final Map<ExpenseCategory, double> categoryTotals;
+  final List<DonutSegment> segments;
   final double totalAmount;
   final double size;
 
   const DonutChart({
     super.key,
-    required this.categoryTotals,
+    required this.segments,
     required this.totalAmount,
     this.size = 200,
   });
@@ -54,7 +56,7 @@ class _DonutChartState extends State<DonutChart>
         return CustomPaint(
           size: Size(widget.size, widget.size),
           painter: DonutChartPainter(
-            widget.categoryTotals,
+            widget.segments,
             widget.totalAmount,
             progress: curved.value,
             emptyColor: AppColors.surfaceVariant,
@@ -66,13 +68,13 @@ class _DonutChartState extends State<DonutChart>
 }
 
 class DonutChartPainter extends CustomPainter {
-  final Map<ExpenseCategory, double> categoryTotals;
+  final List<DonutSegment> segments;
   final double totalAmount;
   final double progress;
   final Color emptyColor;
 
   DonutChartPainter(
-    this.categoryTotals,
+    this.segments,
     this.totalAmount, {
     this.progress = 1.0,
     required this.emptyColor,
@@ -99,11 +101,12 @@ class DonutChartPainter extends CustomPainter {
     double startAngle = -math.pi / 2;
     const fullSweep = 2 * math.pi;
 
-    categoryTotals.forEach((category, amount) {
-      final rawSweep = (amount / totalAmount) * fullSweep;
-      final sweepAngle =
-          (rawSweep - _gapRadians).clamp(0.0, fullSweep) * progress;
-      paint.color = category.color;
+    for (final segment in segments) {
+      final rawSweep = (segment.value / totalAmount) * fullSweep;
+      // A single slice is a full ring; only separate slices get a gap.
+      final gap = segments.length > 1 ? _gapRadians : 0.0;
+      final sweepAngle = (rawSweep - gap).clamp(0.0, fullSweep) * progress;
+      paint.color = segment.color;
 
       if (sweepAngle > 0) {
         canvas.drawArc(
@@ -116,12 +119,12 @@ class DonutChartPainter extends CustomPainter {
       }
 
       startAngle += rawSweep;
-    });
+    }
   }
 
   @override
   bool shouldRepaint(covariant DonutChartPainter oldDelegate) =>
       oldDelegate.progress != progress ||
-      oldDelegate.categoryTotals != categoryTotals ||
+      oldDelegate.segments != segments ||
       oldDelegate.totalAmount != totalAmount;
 }

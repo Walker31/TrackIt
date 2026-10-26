@@ -1,6 +1,8 @@
 import 'database_service.dart';
+import 'sync_outbox.dart';
 import 'sync_service.dart';
 import '../models/expenses.dart';
+import 'id_generator.dart';
 
 class GroupService {
   final DatabaseService _dbService = DatabaseService();
@@ -16,19 +18,26 @@ class GroupService {
     final db = await _dbService.getDatabase();
     final now = DateTime.now();
 
-    final groupId = await db.insert('groups', {
-      'name': name,
-      'icon': icon,
-      'created_at': now.toIso8601String(),
-      'is_synced': 0,
-    });
+    // One transaction, so a sync can't push the group before its owner row
+    // exists (the server would then create a second owner).
+    final groupId = await db.transaction((txn) async {
+      final groupId = await txn.insert('groups', {
+        'uuid': IdGenerator.uuid(),
+        'name': name,
+        'icon': icon,
+        'created_at': now.toIso8601String(),
+        'is_synced': 0,
+      });
 
-    await db.insert('group_members', {
-      'group_id': groupId,
-      'user_id': currentUserId,
-      'username': currentUsername,
-      'role': 'owner',
-      'is_synced': 0,
+      await txn.insert('group_members', {
+        'uuid': IdGenerator.uuid(),
+        'group_id': groupId,
+        'user_id': currentUserId,
+        'username': currentUsername,
+        'role': 'owner',
+        'is_synced': 0,
+      });
+      return groupId;
     });
 
     _syncService.performSync();
@@ -51,6 +60,7 @@ class GroupService {
     }
 
     await db.insert('group_members', {
+      'uuid': IdGenerator.uuid(),
       'group_id': groupId,
       'username': username,
       'role': 'member',
@@ -120,15 +130,22 @@ class GroupService {
 
     final map = expense.toMap();
     map['is_synced'] = 0;
-    final expenseId = await db.insert('group_expenses', map);
-
-    for (final split in expense.splits) {
-      await db.insert('group_expense_splits', {
-        'expense_id': expenseId,
-        'member_id': split.memberId,
-        'share_amount': split.shareAmount,
+    // The expense and its splits land together: a sync running in between
+    // would otherwise push the expense with no splits.
+    final expenseId = await db.transaction((txn) async {
+      final expenseId = await txn.insert('group_expenses', {
+        ...map,
+        'uuid': IdGenerator.uuid(),
       });
-    }
+      for (final split in expense.splits) {
+        await txn.insert('group_expense_splits', {
+          'expense_id': expenseId,
+          'member_id': split.memberId,
+          'share_amount': split.shareAmount,
+        });
+      }
+      return expenseId;
+    });
 
     _syncService.performSync();
 
@@ -147,7 +164,82 @@ class GroupService {
     final db = await _dbService.getDatabase();
     final map = settlement.toMap();
     map['is_synced'] = 0;
-    await db.insert('settlements', map);
+    await db.insert('settlements', {...map, 'uuid': IdGenerator.uuid()});
+    _syncService.performSync();
+  }
+
+  /// Rename a group or change its icon.
+  Future<void> updateGroup(int groupId, {String? name, String? icon}) async {
+    final db = await _dbService.getDatabase();
+    await db.update(
+      'groups',
+      {'name': ?name, 'icon': ?icon, 'is_synced': 0},
+      where: 'id = ?',
+      whereArgs: [groupId],
+    );
+    _syncService.performSync();
+  }
+
+  /// Delete a group with everything in it. On the server only the owner
+  /// may do this, so callers should offer it to the owner only.
+  Future<void> deleteGroup(int groupId) =>
+      _deleteRow('groups', groupId, 'groups/groups/');
+
+  /// Replace an expense's fields and splits.
+  Future<void> updateGroupExpense(GroupExpense expense) async {
+    final db = await _dbService.getDatabase();
+    final map = expense.toMap()
+      ..remove('id')
+      ..remove('remote_id')
+      ..['is_synced'] = 0;
+    await db.transaction((txn) async {
+      await txn.update(
+        'group_expenses',
+        map,
+        where: 'id = ?',
+        whereArgs: [expense.id],
+      );
+      await txn.delete(
+        'group_expense_splits',
+        where: 'expense_id = ?',
+        whereArgs: [expense.id],
+      );
+      for (final split in expense.splits) {
+        await txn.insert('group_expense_splits', {
+          'expense_id': expense.id,
+          'member_id': split.memberId,
+          'share_amount': split.shareAmount,
+        });
+      }
+    });
+    _syncService.performSync();
+  }
+
+  Future<void> deleteGroupExpense(int expenseId) =>
+      _deleteRow('group_expenses', expenseId, 'groups/group-expenses/');
+
+  Future<void> deleteSettlement(int settlementId) =>
+      _deleteRow('settlements', settlementId, 'groups/settlements/');
+
+  /// Delete a local row (children cascade), queueing the server delete if
+  /// it was ever pushed.
+  Future<void> _deleteRow(String table, int id, String remotePath) async {
+    final db = await _dbService.getDatabase();
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        table,
+        columns: ['remote_id'],
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (rows.isNotEmpty && rows.first['remote_id'] != null) {
+        await SyncOutbox.enqueueDelete(
+          txn,
+          '$remotePath${rows.first['remote_id']}/',
+        );
+      }
+      await txn.delete(table, where: 'id = ?', whereArgs: [id]);
+    });
     _syncService.performSync();
   }
 

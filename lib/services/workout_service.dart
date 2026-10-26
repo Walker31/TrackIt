@@ -1,8 +1,10 @@
 import 'package:sqflite/sqflite.dart' show DatabaseExecutor;
+import 'api_service.dart';
 import 'database_service.dart';
 import 'sync_service.dart';
 import 'sync_outbox.dart';
 import '../models/workouts.dart';
+import 'id_generator.dart';
 
 class WorkoutService {
   final DatabaseService _dbService = DatabaseService();
@@ -17,6 +19,7 @@ class WorkoutService {
     map['is_synced'] = 0;
     map.remove('exercises'); // Nested list doesn't go into sqlite directly
 
+    map['uuid'] = IdGenerator.uuid();
     final localId = await db.insert('workouts', map);
     final savedWorkout = workout.copyWith(id: localId);
 
@@ -97,25 +100,30 @@ class WorkoutService {
   Future<Exercise> addExercise(Exercise exercise) async {
     final db = await _dbService.getDatabase();
 
-    final localId = await db.insert('exercises', {
-      'workout_id': exercise.workoutId,
-      'name': exercise.name,
-      'muscle_group': exercise.muscleGroup,
-      'is_synced': 0,
-    });
-
-    for (final s in exercise.sets) {
-      await db.insert('sets', {
-        'exercise_id': localId,
-        'set_number': s.setNumber,
-        'weight': s.weight,
-        'reps': s.reps,
-        'is_completed': s.isCompleted ? 1 : 0,
+    final localId = await db.transaction((txn) async {
+      final localId = await txn.insert('exercises', {
+        'uuid': IdGenerator.uuid(),
+        'workout_id': exercise.workoutId,
+        'name': exercise.name,
+        'muscle_group': exercise.muscleGroup,
         'is_synced': 0,
       });
-    }
 
-    await _markWorkoutDirty(db, exercise.workoutId);
+      for (final s in exercise.sets) {
+        await txn.insert('sets', {
+          'uuid': IdGenerator.uuid(),
+          'exercise_id': localId,
+          'set_number': s.setNumber,
+          'weight': s.weight,
+          'reps': s.reps,
+          'is_completed': s.isCompleted ? 1 : 0,
+          'is_synced': 0,
+        });
+      }
+
+      await _markWorkoutDirty(txn, exercise.workoutId);
+      return localId;
+    });
     _syncService.performSync();
     return exercise.copyWith(id: localId);
   }
@@ -124,6 +132,7 @@ class WorkoutService {
   Future<SetData> addSet(SetData setData) async {
     final db = await _dbService.getDatabase();
     final localId = await db.insert('sets', {
+      'uuid': IdGenerator.uuid(),
       'exercise_id': setData.exerciseId,
       'set_number': setData.setNumber,
       'weight': setData.weight,
@@ -149,12 +158,13 @@ class WorkoutService {
     _syncService.performSync();
   }
 
-  /// Complete a set
-  Future<void> completeSet(int setId) async {
+  /// Complete a set, optionally saving its final weight and reps in the
+  /// same write (one sync instead of two).
+  Future<void> completeSet(int setId, {double? weight, int? reps}) async {
     final db = await _dbService.getDatabase();
     await db.update(
       'sets',
-      {'is_completed': 1, 'is_synced': 0},
+      {'is_completed': 1, 'is_synced': 0, 'weight': ?weight, 'reps': ?reps},
       where: 'id = ?',
       whereArgs: [setId],
     );
@@ -236,16 +246,42 @@ class WorkoutService {
     rMap['is_synced'] = 0;
     rMap.remove('routine_exercises');
 
-    final localId = await db.insert('routines', rMap);
-
-    for (var ex in routine.exercises) {
-      final exMap = ex.toMap();
-      exMap['routine_id'] = localId;
-      await db.insert('routine_exercises', exMap);
-    }
+    final localId = await db.transaction((txn) async {
+      final localId = await txn.insert('routines', {
+        ...rMap,
+        'uuid': IdGenerator.uuid(),
+      });
+      for (var ex in routine.exercises) {
+        final exMap = ex.toMap();
+        exMap['routine_id'] = localId;
+        await txn.insert('routine_exercises', exMap);
+      }
+      return localId;
+    });
 
     _syncService.performSync();
     return routine.copyWith(id: localId);
+  }
+
+  /// Delete a routine (its exercises cascade).
+  Future<void> deleteRoutine(int id) async {
+    final db = await _dbService.getDatabase();
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'routines',
+        columns: ['remote_id'],
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (rows.isNotEmpty && rows.first['remote_id'] != null) {
+        await SyncOutbox.enqueueDelete(
+          txn,
+          '${ApiService.routinesPath}${rows.first['remote_id']}/',
+        );
+      }
+      await txn.delete('routines', where: 'id = ?', whereArgs: [id]);
+    });
+    _syncService.performSync();
   }
 
   /// Start a workout from a routine template
@@ -253,32 +289,39 @@ class WorkoutService {
     final db = await _dbService.getDatabase();
     final now = DateTime.now();
 
-    final workoutId = await db.insert('workouts', {
-      'type': routine.type.name,
-      'timestamp': now.toIso8601String(),
-      'notes': 'Started from ${routine.name}',
-      'is_synced': 0,
-    });
-
-    for (final routineExercise in routine.exercises) {
-      final exerciseId = await db.insert('exercises', {
-        'workout_id': workoutId,
-        'name': routineExercise.name,
-        'muscle_group': routineExercise.muscleGroup,
+    // One transaction, so a sync never pushes a half-built session.
+    final workoutId = await db.transaction((txn) async {
+      final workoutId = await txn.insert('workouts', {
+        'uuid': IdGenerator.uuid(),
+        'type': routine.type.name,
+        'timestamp': now.toIso8601String(),
+        'notes': 'Started from ${routine.name}',
         'is_synced': 0,
       });
 
-      for (int i = 1; i <= routineExercise.setsCount; i++) {
-        await db.insert('sets', {
-          'exercise_id': exerciseId,
-          'set_number': i,
-          'weight': 0.0,
-          'reps': 0,
-          'is_completed': 0,
+      for (final routineExercise in routine.exercises) {
+        final exerciseId = await txn.insert('exercises', {
+          'uuid': IdGenerator.uuid(),
+          'workout_id': workoutId,
+          'name': routineExercise.name,
+          'muscle_group': routineExercise.muscleGroup,
           'is_synced': 0,
         });
+
+        for (int i = 1; i <= routineExercise.setsCount; i++) {
+          await txn.insert('sets', {
+            'uuid': IdGenerator.uuid(),
+            'exercise_id': exerciseId,
+            'set_number': i,
+            'weight': 0.0,
+            'reps': 0,
+            'is_completed': 0,
+            'is_synced': 0,
+          });
+        }
       }
-    }
+      return workoutId;
+    });
 
     _syncService.performSync();
 
@@ -336,18 +379,20 @@ class WorkoutService {
   /// Delete workout
   Future<void> deleteWorkout(int id) async {
     final db = await _dbService.getDatabase();
-    final rows = await db.query(
-      'workouts',
-      columns: ['remote_id'],
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-    if (rows.isNotEmpty && rows.first['remote_id'] != null) {
-      await SyncOutbox.enqueueDelete(
-        db,
-        'fitness/workouts/${rows.first['remote_id']}/',
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'workouts',
+        columns: ['remote_id'],
+        where: 'id = ?',
+        whereArgs: [id],
       );
-    }
-    await db.delete('workouts', where: 'id = ?', whereArgs: [id]);
+      if (rows.isNotEmpty && rows.first['remote_id'] != null) {
+        await SyncOutbox.enqueueDelete(
+          txn,
+          'fitness/workouts/${rows.first['remote_id']}/',
+        );
+      }
+      await txn.delete('workouts', where: 'id = ?', whereArgs: [id]);
+    });
   }
 }

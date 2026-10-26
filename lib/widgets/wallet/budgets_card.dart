@@ -5,6 +5,7 @@ import '../../services/catalog_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../glass_container.dart';
+import '../../utils/format.dart';
 
 class _BudgetRow {
   final Budget budget;
@@ -43,7 +44,7 @@ class _BudgetsCardState extends State<BudgetsCard> {
   }
 
   Future<List<_BudgetRow>> _load() async {
-    final month = DateTime.now();
+    final month = widget.provider.selectedMonth;
     final categories = {
       for (final c in await _catalog.getCategories()) c.id: c,
     };
@@ -111,7 +112,7 @@ class _BudgetsCardState extends State<BudgetsCard> {
     final value = double.tryParse(amount.text);
     amount.dispose();
     if (ok != true || value == null || value <= 0) return;
-    await _catalog.setBudget(selected.id, DateTime.now(), value);
+    await _catalog.setBudget(selected.id, widget.provider.selectedMonth, value);
     _reload();
   }
 
@@ -183,8 +184,8 @@ class _BudgetsCardState extends State<BudgetsCard> {
                   child: Text(r.category.name, style: AppTextStyles.bodyMd),
                 ),
                 Text(
-                  '₹${r.spent.toStringAsFixed(0)} / '
-                  '₹${r.budget.limitAmount.toStringAsFixed(0)}',
+                  '${formatRupees(r.spent)} / '
+                  '${formatRupees(r.budget.limitAmount)}',
                   style: AppTextStyles.bodySm.copyWith(
                     color: over ? AppColors.expense : AppColors.textSecondary,
                   ),

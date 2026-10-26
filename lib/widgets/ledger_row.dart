@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 
+export '../utils/format.dart';
+
 /// Splitwise-style transaction row: date column, square category tile,
 /// title with a "who paid" line, and a small label over the amount.
 class LedgerRow extends StatelessWidget {
@@ -18,6 +20,7 @@ class LedgerRow extends StatelessWidget {
   /// Formatted amount, or null for rows with no stake ("not involved").
   final String? trailingAmount;
   final Color trailingColor;
+  final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
   const LedgerRow({
@@ -30,12 +33,14 @@ class LedgerRow extends StatelessWidget {
     required this.trailingLabel,
     required this.trailingAmount,
     required this.trailingColor,
+    this.onTap,
     this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
+      onTap: onTap,
       onLongPress: onLongPress,
       borderRadius: BorderRadius.circular(10),
       child: Padding(
@@ -146,12 +151,6 @@ class LedgerMonthHeader extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Formats a rupee amount, keeping paise only when present.
-String formatRupees(double amount) {
-  final whole = amount == amount.roundToDouble();
-  return '₹${NumberFormat(whole ? '#,##,##0' : '#,##,##0.00', 'en_IN').format(amount)}';
 }
 
 /// Lays out [rows] under month headers with hairline dividers, newest

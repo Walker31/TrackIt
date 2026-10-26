@@ -11,13 +11,18 @@ import '../expense_entry_fields.dart';
 import '../glass_container.dart';
 import '../app_button.dart';
 import '../../models/expenses.dart';
+import '../../utils/format.dart';
 
 /// Bottom-sheet transaction entry: amount -> category grid -> optional
 /// subcategory / date / payment method / event / note (per the PaisaPulse
 /// blueprint).
 class AddExpenseSheet extends StatefulWidget {
   final Function(Expense) onAdd;
-  const AddExpenseSheet({super.key, required this.onAdd});
+
+  /// An existing transaction to edit; null to add a new one.
+  final Expense? initial;
+
+  const AddExpenseSheet({super.key, required this.onAdd, this.initial});
 
   @override
   State<AddExpenseSheet> createState() => _AddExpenseSheetState();
@@ -46,9 +51,36 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
 
   double get _amount => double.tryParse(_amountController.text) ?? 0;
 
+  bool get _editing => widget.initial != null;
+
+  /// The editing transaction's category, subcategory and event, applied
+  /// once the catalog has loaded.
+  String? _pendingCategoryId;
+  String? _pendingSubcategoryId;
+  String? _pendingEventId;
+
   @override
   void initState() {
     super.initState();
+    final initial = widget.initial;
+    if (initial != null) {
+      _type = initial.type;
+      _amountController.text = initial.amount == initial.amount.roundToDouble()
+          ? initial.amount.toStringAsFixed(0)
+          : initial.amount.toStringAsFixed(2);
+      _descController.text = initial.description ?? '';
+      _date = initial.timestamp;
+      _payment = initial.paymentMethod;
+      // Rows from before categories existed map to their default.
+      _pendingCategoryId =
+          initial.categoryId ??
+          defaultCategories
+              .where((c) => c.legacy == initial.category && c.type == _type)
+              .firstOrNull
+              ?.id;
+      _pendingSubcategoryId = initial.subcategoryId;
+      _pendingEventId = initial.eventId;
+    }
     _amountController.addListener(() => setState(() => _error = null));
     _load();
   }
@@ -64,16 +96,28 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
     final categories = await _catalog.getCategories(type: _type);
     final events = await _catalog.getEvents();
     if (!mounted) return;
-    final lastId = _lastCategory[_type];
+    final wantedId = _pendingCategoryId ?? _lastCategory[_type];
+    _pendingCategoryId = null;
     final selected =
-        categories.where((c) => c.id == lastId).firstOrNull ??
+        categories.where((c) => c.id == wantedId).firstOrNull ??
         categories.firstOrNull;
+    final eventId = _pendingEventId ?? _event?.id;
+    _pendingEventId = null;
     setState(() {
       _categories = categories;
       _events = events;
-      _event = _events.where((e) => e.id == _event?.id).firstOrNull;
+      _event = _events.where((e) => e.id == eventId).firstOrNull;
     });
     if (selected != null) await _selectCategory(selected);
+    final subId = _pendingSubcategoryId;
+    _pendingSubcategoryId = null;
+    if (subId != null && mounted) {
+      setState(
+        () => _subcategory = _subcategories
+            .where((s) => s.id == subId)
+            .firstOrNull,
+      );
+    }
   }
 
   Future<void> _selectCategory(Category c) async {
@@ -168,8 +212,14 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
     }
     _lastCategory[_type] = category.id;
     final now = DateTime.now();
+    final initial = widget.initial;
+    // An edit that keeps the day keeps the original time of day.
+    final keepTime =
+        initial != null && DateUtils.isSameDay(initial.timestamp, _date);
     widget.onAdd(
       Expense(
+        id: initial?.id,
+        attachmentUrl: initial?.attachmentUrl,
         amount: amount,
         type: _type,
         category: category.legacy,
@@ -181,14 +231,16 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
             ? null
             : _descController.text.trim(),
         // Keep the current time of day so same-day entries stay ordered.
-        timestamp: DateTime(
-          _date.year,
-          _date.month,
-          _date.day,
-          now.hour,
-          now.minute,
-          now.second,
-        ),
+        timestamp: keepTime
+            ? initial.timestamp
+            : DateTime(
+                _date.year,
+                _date.month,
+                _date.day,
+                now.hour,
+                now.minute,
+                now.second,
+              ),
       ),
     );
     Navigator.pop(context);
@@ -230,7 +282,8 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                         transitionBuilder: _fadeSlide,
                         layoutBuilder: _alignStart,
                         child: Text(
-                          isIncome ? 'Add income' : 'Add expense',
+                          '${_editing ? 'Edit' : 'Add'} '
+                          '${isIncome ? 'income' : 'expense'}',
                           key: ValueKey(_type),
                           style: AppTextStyles.h2,
                         ),
@@ -426,8 +479,10 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
 
   Widget _footer(Color accent, double amount, bool isIncome) {
     final kind = isIncome ? 'income' : 'expense';
-    final label = amount > 0
-        ? 'Save ₹${NumberFormat.decimalPattern('en_IN').format(amount)} $kind'
+    final label = _editing
+        ? 'Save changes'
+        : amount > 0
+        ? 'Save ${formatRupees(amount)} $kind'
         : 'Save $kind';
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
@@ -679,6 +734,34 @@ class _CategoryTile extends StatelessWidget {
     required this.onTap,
   });
 
+  /// Wraps at spaces only: a single long word ("Entertainment") shrinks to
+  /// fit on one line instead of breaking mid-word on narrow phones.
+  Widget _label(Color color) {
+    final style = AppTextStyles.label.copyWith(
+      fontSize: 10.5,
+      height: 1.25,
+      letterSpacing: 0.1,
+      color: selected ? color : AppColors.textSecondary,
+      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+    );
+    if (!category.name.contains(' ')) {
+      return Align(
+        alignment: Alignment.topCenter,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(category.name, maxLines: 1, style: style),
+        ),
+      );
+    }
+    return Text(
+      category.name,
+      maxLines: 2,
+      textAlign: TextAlign.center,
+      overflow: TextOverflow.ellipsis,
+      style: style,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final color = category.colorValue;
@@ -719,21 +802,7 @@ class _CategoryTile extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             // Fixed two-line slot keeps every tile in a row the same height.
-            SizedBox(
-              height: 28,
-              child: Text(
-                category.name,
-                maxLines: 2,
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.label.copyWith(
-                  fontSize: 10.5,
-                  height: 1.25,
-                  color: selected ? color : AppColors.textSecondary,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-            ),
+            SizedBox(height: 28, child: _label(color)),
           ],
         ),
       ),

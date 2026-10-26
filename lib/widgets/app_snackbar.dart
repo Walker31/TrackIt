@@ -62,15 +62,20 @@ class AppSnackbar {
     onAction: onAction,
   );
 
-  /// Lift above the bottom bar on phones; keep toasts compact and centred
-  /// on wide windows instead of stretching edge to edge.
+  /// Lift above the bottom bar and the floating action button that sits on
+  /// it on phones; keep toasts compact and centred on wide windows instead
+  /// of stretching edge to edge.
   static EdgeInsets _margin(BuildContext context, bool aboveNav) {
     final size = WindowSize.of(context);
     final width = MediaQuery.sizeOf(context).width;
     final side = size.usesBottomNav
         ? 16.0
         : ((width - 480) / 2).clamp(16.0, width);
-    final bottom = aboveNav && size.usesBottomNav ? 112.0 : 24.0;
+    // Nav bar, then the FAB (16 margin + 56 tall), then a small gap.
+    const clearFab = 16.0 + 56.0 + 12.0;
+    final bottom = aboveNav && size.usesBottomNav
+        ? Responsive.navInset(context) + clearFab
+        : 24.0;
     return EdgeInsets.fromLTRB(side, 0, side, bottom);
   }
 

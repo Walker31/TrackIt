@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../app_card.dart';
+import 'spending_chart.dart' show niceInterval;
 
 class VolumeChart extends StatelessWidget {
   final Map<DateTime, double> data;
@@ -17,6 +18,10 @@ class VolumeChart extends StatelessWidget {
       return FlSpot(dayIndex, e.value);
     }).toList();
 
+    final peak = data.values.fold<double>(0, (a, b) => a > b ? a : b);
+    final maxY = peak <= 0 ? 100.0 : peak * 1.2;
+    final interval = niceInterval(maxY);
+
     return AppCard(
       child: Column(
         children: [
@@ -24,12 +29,27 @@ class VolumeChart extends StatelessWidget {
             height: 200,
             child: LineChart(
               LineChartData(
-                gridData: const FlGridData(show: false),
+                minX: 0,
+                maxX: 6,
+                minY: 0,
+                maxY: maxY,
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: interval,
+                  getDrawingHorizontalLine: (_) => FlLine(
+                    color: AppColors.textTertiary.withValues(alpha: 0.15),
+                    strokeWidth: 1,
+                  ),
+                ),
                 titlesData: FlTitlesData(
                   show: true,
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
+                      // One label per day; without this fl_chart picks
+                      // half-day steps and every day appears twice.
+                      interval: 1,
                       getTitlesWidget: (value, meta) {
                         final date = DateTime.now().subtract(
                           Duration(days: 6 - value.toInt()),
@@ -44,8 +64,23 @@ class VolumeChart extends StatelessWidget {
                       },
                     ),
                   ),
-                  leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 44,
+                      interval: interval,
+                      getTitlesWidget: (value, meta) {
+                        // Skip the top edge: it's rarely a round number.
+                        if (value == meta.max) return const SizedBox.shrink();
+                        return Text(
+                          '${value.toStringAsFixed(0)} kg',
+                          style: AppTextStyles.label.copyWith(
+                            fontSize: 9,
+                            letterSpacing: 0,
+                          ),
+                        );
+                      },
+                    ),
                   ),
                   topTitles: const AxisTitles(
                     sideTitles: SideTitles(showTitles: false),

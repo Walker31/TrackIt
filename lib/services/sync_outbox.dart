@@ -50,6 +50,10 @@ class SyncOutbox {
     return (rows.first['c'] as int?) ?? 0;
   }
 
+  /// A request the server keeps answering with an error is given up after
+  /// this many syncs, so one bad row can't retry forever.
+  static const maxAttempts = 5;
+
   /// Replay queued requests oldest-first. A request is dropped once the
   /// server accepted it or no longer has the resource (404/410). Network
   /// failures stop the drain so ordering is preserved for the next attempt.
@@ -74,13 +78,19 @@ class SyncOutbox {
         } else if (e.response == null) {
           return;
         } else {
-          debugPrint('Outbox request $id failed: $e');
-          await db.update(
-            table,
-            {'attempts': (row['attempts'] as int) + 1},
-            where: 'id = ?',
-            whereArgs: [id],
-          );
+          final attempts = (row['attempts'] as int) + 1;
+          if (attempts >= maxAttempts) {
+            debugPrint('Outbox request $id dropped after $attempts tries: $e');
+            await db.delete(table, where: 'id = ?', whereArgs: [id]);
+          } else {
+            debugPrint('Outbox request $id failed: $e');
+            await db.update(
+              table,
+              {'attempts': attempts},
+              where: 'id = ?',
+              whereArgs: [id],
+            );
+          }
         }
       }
     }

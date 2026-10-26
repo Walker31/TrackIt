@@ -12,6 +12,7 @@ import '../services/sync_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/app_snackbar.dart';
+import '../utils/format.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -218,8 +219,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _syncNow() async {
+    // Providers reload themselves when the sync completes.
     await SyncService().performSync();
-    await ref.read(expenseProviderProvider).refreshData();
     if (mounted) {
       setState(() {});
       AppSnackbar.success(context, 'Sync complete.');
@@ -363,7 +364,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     if (mounted) {
       AppSnackbar.success(
         context,
-        'Monthly budget set to ₹${amount.toStringAsFixed(0)}.',
+        'Monthly budget set to ${formatRupees(amount)}.',
       );
     }
   }
