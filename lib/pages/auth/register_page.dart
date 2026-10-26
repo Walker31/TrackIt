@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_text_styles.dart';
+import '../../widgets/app_button.dart';
 import '../../widgets/app_snackbar.dart';
+import '../../widgets/auth_field.dart';
+import '../../widgets/auth_scaffold.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});
@@ -38,7 +43,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       return;
     }
 
-    final success = await ref
+    final error = await ref
         .read(authProvider)
         .register(
           _usernameController.text.trim(),
@@ -47,7 +52,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
         );
 
     if (mounted) {
-      if (success) {
+      if (error == null) {
         context.go('/home');
         AppSnackbar.success(
           context,
@@ -55,167 +60,144 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           aboveNav: true,
         );
       } else {
-        AppSnackbar.error(
-          context,
-          'Registration failed. Username may already be taken.',
-        );
+        AppSnackbar.error(context, error);
       }
     }
   }
 
   @override
+  void initState() {
+    super.initState();
+    // Re-render the match hint as the user types.
+    _passwordController.addListener(_refresh);
+    _confirmPasswordController.addListener(_refresh);
+  }
+
+  void _refresh() => setState(() {});
+
+  @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider).state;
+    final confirm = _confirmPasswordController.text;
+    final matches = confirm.isNotEmpty && confirm == _passwordController.text;
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          onPressed: () => context.pop(),
-        ),
-      ),
-      extendBodyBehindAppBar: true,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Theme.of(context).colorScheme.surface,
-              Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Create Account',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Join the TrackIt community today',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyLarge?.copyWith(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 48),
-                  TextField(
-                    controller: _usernameController,
-                    decoration: InputDecoration(
-                      labelText: 'Username',
-                      prefixIcon: const Icon(Icons.person_outline),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      labelText: 'Email Address',
-                      prefixIcon: const Icon(Icons.email_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                        ),
-                        onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword,
-                        ),
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _confirmPasswordController,
-                    obscureText: _obscurePassword,
-                    decoration: InputDecoration(
-                      labelText: 'Confirm Password',
-                      prefixIcon: const Icon(Icons.lock_reset_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  ElevatedButton(
-                    onPressed: authState.isLoading ? null : _handleRegister,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: authState.isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text(
-                            'Create Account',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: () => context.pop(),
-                    child: RichText(
-                      text: TextSpan(
-                        text: "Already have an account? ",
-                        style: TextStyle(color: Colors.grey[400]),
+    return AuthScaffold(
+      title: 'Create account',
+      subtitle: 'Back up your data and use it on any device.',
+      showBack: true,
+      form: AutofillGroup(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AuthField(
+              controller: _usernameController,
+              hint: 'Username',
+              icon: Icons.person_outline_rounded,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.newUsername],
+            ),
+            const SizedBox(height: 12),
+            AuthField(
+              controller: _emailController,
+              hint: 'Email (optional)',
+              icon: Icons.mail_outline_rounded,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.email],
+            ),
+            const SizedBox(height: 12),
+            AuthField(
+              controller: _passwordController,
+              hint: 'Password',
+              icon: Icons.lock_outline_rounded,
+              obscure: _obscurePassword,
+              textInputAction: TextInputAction.next,
+              autofillHints: const [AutofillHints.newPassword],
+              suffix: IconButton(
+                tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+                icon: Icon(
+                  _obscurePassword
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                  size: 20,
+                  color: AppColors.textTertiary,
+                ),
+                onPressed: () =>
+                    setState(() => _obscurePassword = !_obscurePassword),
+              ),
+            ),
+            const SizedBox(height: 12),
+            AuthField(
+              controller: _confirmPasswordController,
+              hint: 'Confirm password',
+              icon: Icons.lock_reset_rounded,
+              obscure: _obscurePassword,
+              textInputAction: TextInputAction.done,
+              onSubmitted: _handleRegister,
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              child: confirm.isEmpty
+                  ? const SizedBox(width: double.infinity)
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 8, left: 4),
+                      child: Row(
                         children: [
-                          TextSpan(
-                            text: 'Log In',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.primary,
-                              fontWeight: FontWeight.bold,
+                          Icon(
+                            matches
+                                ? Icons.check_circle_rounded
+                                : Icons.error_outline_rounded,
+                            size: 16,
+                            color: matches
+                                ? AppColors.income
+                                : AppColors.expense,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            matches
+                                ? 'Passwords match'
+                                : "Passwords don't match yet",
+                            style: AppTextStyles.bodySm.copyWith(
+                              color: matches
+                                  ? AppColors.income
+                                  : AppColors.expense,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ],
+            ),
+            const SizedBox(height: 24),
+            AppButton(
+              text: 'Create account',
+              isLoading: authState.isLoading,
+              onPressed: _handleRegister,
+            ),
+          ],
+        ),
+      ),
+      footer: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            'Already have an account?',
+            style: AppTextStyles.bodyMd.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          TextButton(
+            onPressed: () => context.pop(),
+            child: Text(
+              'Log in',
+              style: AppTextStyles.bodyMd.copyWith(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import '../theme/app_colors.dart';
 
+/// Flat surface with a hairline border. No shadows — depth comes from the
+/// surface/background contrast alone.
 class AppCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
@@ -28,37 +29,21 @@ class AppCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: color ?? Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(borderRadius ?? 20),
+        borderRadius: BorderRadius.circular(borderRadius ?? 16),
         border:
             border ??
             Border.all(
               color: isDark
-                  ? Colors.white.withValues(alpha: 0.1)
+                  ? Colors.white.withValues(alpha: 0.07)
                   : Colors.black.withValues(alpha: 0.06),
               width: 1,
             ),
         gradient: gradient,
-        boxShadow:
-            boxShadow ??
-            [
-              BoxShadow(
-                color: isDark
-                    ? Colors.black.withValues(alpha: 0.35)
-                    : Colors.black.withValues(alpha: 0.08),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-              if (isDark)
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.08),
-                  blurRadius: 28,
-                  spreadRadius: -6,
-                ),
-            ],
+        boxShadow: boxShadow,
       ),
       clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: padding ?? const EdgeInsets.all(20),
+        padding: padding ?? const EdgeInsets.all(18),
         child: child,
       ),
     );

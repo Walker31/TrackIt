@@ -1,0 +1,32 @@
+name: CI
+
+# Static analysis and unit tests on every push (any branch) and on PRs.
+# The APK build lives in build-apk.yml.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # Strict: infos and warnings fail the build (the codebase is clean).
+      - run: flutter analyze
+
+      # Includes SQLite-backed tests (sqflite_common_ffi on an in-memory DB).
+      - run: flutter test --reporter expanded

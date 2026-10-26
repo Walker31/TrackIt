@@ -1,12 +1,12 @@
 {
-    "name": "trackit",
-    "short_name": "trackit",
+    "name": "TrackIt",
+    "short_name": "TrackIt",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "background_color": "#059669",
+    "theme_color": "#059669",
+    "description": "Spending and training, in one place.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

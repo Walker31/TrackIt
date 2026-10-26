@@ -67,11 +67,29 @@ class _CreateGroupSheetState extends State<CreateGroupSheet> {
                 final isSelected = _selectedIcon == icon;
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(icon, style: const TextStyle(fontSize: 18)),
-                    selected: isSelected,
-                    showCheckmark: false,
-                    onSelected: (_) => setState(() => _selectedIcon = icon),
+                  // A fixed square tile: chips squeezed the emoji glyphs
+                  // and clipped them (notably on web).
+                  child: GestureDetector(
+                    onTap: () => setState(() => _selectedIcon = icon),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      width: 50,
+                      height: 50,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.primary.withValues(alpha: 0.14)
+                            : AppColors.surfaceVariant,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected
+                              ? AppColors.primary
+                              : Colors.transparent,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Text(icon, style: const TextStyle(fontSize: 24)),
+                    ),
                   ),
                 );
               },

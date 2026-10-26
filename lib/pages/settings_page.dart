@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../theme/responsive.dart';
+import '../widgets/animated/fade_slide_in.dart';
 import '../providers/app_providers.dart';
 import '../providers/auth_provider.dart';
 import 'package:go_router/go_router.dart';
@@ -43,8 +45,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Settings', style: AppTextStyles.h2)),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-        children: [
+        padding: EdgeInsets.fromLTRB(
+          Responsive.centeringPadding(context),
+          20,
+          Responsive.centeringPadding(context),
+          24,
+        ),
+        children: _staggered([
           _buildUserProfile(),
           const SizedBox(height: 24),
           _buildSectionTitle('Appearance'),
@@ -62,17 +69,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     segments: const [
                       ButtonSegment<ThemeMode>(
                         value: ThemeMode.light,
-                        icon: Icon(Icons.light_mode_outlined),
                         label: Text('Light'),
                       ),
                       ButtonSegment<ThemeMode>(
                         value: ThemeMode.dark,
-                        icon: Icon(Icons.dark_mode_outlined),
                         label: Text('Dark'),
                       ),
                       ButtonSegment<ThemeMode>(
                         value: ThemeMode.system,
-                        icon: Icon(Icons.phone_iphone_outlined),
                         label: Text('System'),
                       ),
                     ],
@@ -133,7 +137,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 48),
           if (ref.watch(authProvider).state.status == AuthStatus.authenticated)
             _buildLogoutButton(),
-        ],
+        ]),
       ),
     );
   }
@@ -202,6 +206,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ),
       ),
     );
+  }
+
+  /// Gives each settings block a staggered fade-in; spacers pass through.
+  List<Widget> _staggered(List<Widget> children) {
+    var index = 0;
+    return [
+      for (final child in children)
+        child is SizedBox ? child : FadeSlideIn(index: index++, child: child),
+    ];
   }
 
   Future<void> _syncNow() async {

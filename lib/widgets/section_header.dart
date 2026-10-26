@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 
 class SectionHeader extends StatelessWidget {
@@ -19,11 +20,15 @@ class SectionHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (subtitle != null) ...[
-          Text(subtitle!.toUpperCase(), style: AppTextStyles.label),
-          const SizedBox(height: 8),
+          Text(
+            subtitle!.toUpperCase(),
+            style: AppTextStyles.label.copyWith(color: AppColors.textTertiary),
+          ),
+          const SizedBox(height: 6),
         ],
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(child: Text(title, style: AppTextStyles.h2)),
             ?action,

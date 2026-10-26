@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/responsive.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 
@@ -61,6 +62,18 @@ class AppSnackbar {
     onAction: onAction,
   );
 
+  /// Lift above the bottom bar on phones; keep toasts compact and centred
+  /// on wide windows instead of stretching edge to edge.
+  static EdgeInsets _margin(BuildContext context, bool aboveNav) {
+    final size = WindowSize.of(context);
+    final width = MediaQuery.sizeOf(context).width;
+    final side = size.usesBottomNav
+        ? 16.0
+        : ((width - 480) / 2).clamp(16.0, width);
+    final bottom = aboveNav && size.usesBottomNav ? 112.0 : 24.0;
+    return EdgeInsets.fromLTRB(side, 0, side, bottom);
+  }
+
   static void _show(
     BuildContext context,
     String message,
@@ -94,7 +107,7 @@ class AppSnackbar {
           clipBehavior: Clip.none,
           elevation: 0,
           padding: EdgeInsets.zero,
-          margin: EdgeInsets.fromLTRB(16, 0, 16, aboveNav ? 112 : 16),
+          margin: _margin(context, aboveNav),
           duration: Duration(seconds: type == SnackbarType.error ? 4 : 3),
           content: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

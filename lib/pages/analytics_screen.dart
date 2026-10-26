@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../theme/responsive.dart';
 import '../theme/app_colors.dart';
-import '../theme/app_text_styles.dart';
+import '../widgets/animated/fade_slide_in.dart';
 import '../widgets/app_card.dart';
+import '../widgets/page_header.dart';
 import '../widgets/section_header.dart';
 import '../services/expense_service.dart';
 import '../services/workout_service.dart';
@@ -25,53 +27,56 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          _buildAppBar(),
+          const SliverToBoxAdapter(child: PageHeader(title: 'Stats')),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SectionHeader(
-                    title: "Financial Trends",
-                    subtitle: "Weekly Spending",
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                Responsive.pageBottomPadding(context),
+              ),
+              child: ResponsiveColumns(
+                gap: 40,
+                left: [
+                  const FadeSlideIn(
+                    child: SectionHeader(
+                      title: "Financial Trends",
+                      subtitle: "Weekly Spending",
+                    ),
                   ),
                   const SizedBox(height: 24),
-                  FutureBuilder<Map<DateTime, double>>(
-                    future: _expenseService.getWeeklyExpenseData(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const AppCard(
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        );
-                      }
-                      return SpendingChart(data: snapshot.data ?? {});
-                    },
+                  FadeSlideIn(
+                    index: 1,
+                    child: FutureBuilder<Map<DateTime, double>>(
+                      future: _expenseService.getWeeklyExpenseData(),
+                      builder: (context, snapshot) => _fadeIn(
+                        snapshot.connectionState == ConnectionState.waiting
+                            ? const _ChartLoading()
+                            : SpendingChart(data: snapshot.data ?? {}),
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 40),
-                  const SectionHeader(
-                    title: "Physical Progress",
-                    subtitle: "Workout Volume",
+                ],
+                right: [
+                  const FadeSlideIn(
+                    index: 2,
+                    child: SectionHeader(
+                      title: "Physical Progress",
+                      subtitle: "Workout Volume",
+                    ),
                   ),
                   const SizedBox(height: 24),
-                  FutureBuilder<Map<DateTime, double>>(
-                    future: _workoutService.getWeeklyVolumeData(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const AppCard(
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        );
-                      }
-                      return VolumeChart(data: snapshot.data ?? {});
-                    },
+                  FadeSlideIn(
+                    index: 3,
+                    child: FutureBuilder<Map<DateTime, double>>(
+                      future: _workoutService.getWeeklyVolumeData(),
+                      builder: (context, snapshot) => _fadeIn(
+                        snapshot.connectionState == ConnectionState.waiting
+                            ? const _ChartLoading()
+                            : VolumeChart(data: snapshot.data ?? {}),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -82,16 +87,25 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _buildAppBar() {
-    return SliverAppBar(
-      expandedHeight: 120,
-      floating: false,
-      pinned: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      flexibleSpace: const FlexibleSpaceBar(
-        titlePadding: EdgeInsets.only(left: 20, bottom: 16),
-        centerTitle: false,
-        title: Text("Analytics", style: AppTextStyles.h2),
+  /// Cross-fades from the loading placeholder to the chart.
+  Widget _fadeIn(Widget child) => AnimatedSwitcher(
+    duration: const Duration(milliseconds: 350),
+    switchInCurve: Curves.easeOutCubic,
+    child: KeyedSubtree(key: ValueKey(child.runtimeType), child: child),
+  );
+}
+
+class _ChartLoading extends StatelessWidget {
+  const _ChartLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const AppCard(
+      child: SizedBox(
+        height: 200,
+        child: Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
       ),
     );
   }

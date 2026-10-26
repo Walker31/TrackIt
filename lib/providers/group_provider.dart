@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/expenses.dart';
 import '../services/group_service.dart';
+import '../services/sync_service.dart';
 
 class GroupProvider extends ChangeNotifier {
   final GroupService _service = GroupService();
@@ -12,8 +14,18 @@ class GroupProvider extends ChangeNotifier {
   List<Group> _groups = [];
   bool _isLoading = false;
 
+  StreamSubscription<void>? _syncSub;
+
   GroupProvider({this.currentUserId, this.currentUsername}) {
+    // Pick up groups and members pulled by background syncs.
+    _syncSub = SyncService().onSyncComplete.listen((_) => refreshGroups());
     refreshGroups();
+  }
+
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    super.dispose();
   }
 
   List<Group> get groups => _groups;
@@ -31,6 +43,9 @@ class GroupProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  Future<List<Settlement>> getSettlements(int groupId) =>
+      _service.getSettlements(groupId);
 
   Future<void> createGroup(String name, String icon) async {
     // Local mode has no account: the creator is just "Me" on this device.

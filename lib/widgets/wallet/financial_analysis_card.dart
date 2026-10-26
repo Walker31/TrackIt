@@ -16,8 +16,14 @@ class FinancialAnalysisCard extends StatelessWidget {
   Widget build(BuildContext context) {
     if (provider.isLoading) {
       return const AppCard(
-        child: Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
+        child: SizedBox(
+          height: 96,
+          child: Center(
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.primary,
+            ),
+          ),
         ),
       );
     }
@@ -31,20 +37,25 @@ class FinancialAnalysisCard extends StatelessWidget {
         summary.totalAmount <= 0 ||
         nonZeroCategories.isEmpty) {
       return AppCard(
-        child: Column(
-          children: [
-            Icon(
-              Icons.account_balance_wallet,
-              size: 48,
-              color: AppColors.textTertiary,
-            ),
-            const SizedBox(height: 16),
-            Text("No transactions yet", style: AppTextStyles.bodyLg),
-            const Text(
-              "Start tracking your expenses",
-              style: AppTextStyles.bodySm,
-            ),
-          ],
+        child: SizedBox(
+          width: double.infinity,
+          child: Column(
+            children: [
+              Icon(
+                Icons.account_balance_wallet_outlined,
+                size: 36,
+                color: AppColors.textTertiary,
+              ),
+              const SizedBox(height: 12),
+              Text("No transactions yet", style: AppTextStyles.bodyLg),
+              Text(
+                "Start tracking your expenses",
+                style: AppTextStyles.bodySm.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }

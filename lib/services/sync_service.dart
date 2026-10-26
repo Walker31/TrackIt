@@ -1,12 +1,17 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:dio/dio.dart' show DioException;
 import 'package:flutter/foundation.dart';
 import 'database_service.dart';
 import 'api_service.dart';
 import 'app_mode_service.dart';
+import 'coalescing_runner.dart';
 import 'sync_outbox.dart';
 import '../models/expenses.dart';
 import '../models/workouts.dart';
-import 'package:sqflite/sqflite.dart' show ConflictAlgorithm, DatabaseExecutor;
+import 'package:sqflite/sqflite.dart'
+    show ConflictAlgorithm, Database, DatabaseExecutor;
 
 class SyncService {
   static final SyncService _instance = SyncService._internal();
@@ -16,7 +21,7 @@ class SyncService {
   final DatabaseService _dbService = DatabaseService();
   final ApiService _apiService = ApiService();
 
-  bool _isSyncing = false;
+  late final _runner = CoalescingRunner(_syncPass);
 
   static const _cursorPrefix = 'last_sync_';
 
@@ -114,16 +119,30 @@ class SyncService {
     );
   }
 
-  /// Perform full sync
-  Future<void> performSync() async {
+  /// Fires after every completed sync run, so screens can reload from the
+  /// local database once pulled data has landed.
+  Stream<void> get onSyncComplete => _syncComplete.stream;
+  final _syncComplete = StreamController<void>.broadcast();
+
+  /// Perform full sync. Overlapping calls share one run (see
+  /// [CoalescingRunner]): two concurrent runs would both push the same rows
+  /// and both insert the same pulled rows (duplicates). A call made mid-run
+  /// queues one more pass and completes only after it, so awaiting callers
+  /// always see fresh data.
+  Future<void> performSync() {
     // Local mode never talks to a server.
-    if (!AppModeService.isServer) return;
-    if (_isSyncing) return;
+    if (!AppModeService.isServer) return Future.value();
+    return _runner.run();
+  }
+
+  Future<void> _syncPass() async {
     if (!await isOnline()) return;
+    await _runSync();
+    _syncComplete.add(null);
+  }
 
-    _isSyncing = true;
+  Future<void> _runSync() async {
     debugPrint('Starting Sync...');
-
     try {
       // Replay queued deletes first so the pulls below can't resurrect them.
       await SyncOutbox.drain(_apiService);
@@ -134,12 +153,9 @@ class SyncService {
       await _syncGroupMembers();
       await _syncGroupExpenses();
       await _syncSettlements();
-      await _cleanupOldSyncedData(); // Keep local cache small
       debugPrint('Sync Completed successfully.');
     } catch (e) {
       debugPrint('Sync Failed: $e');
-    } finally {
-      _isSyncing = false;
     }
   }
 
@@ -287,61 +303,64 @@ class SyncService {
         'transactions',
       );
 
-      for (var data in remoteData) {
-        final remoteId = data['id'];
-        if (remoteId == null) continue;
+      await mergeRemoteExpenses(db, remoteData);
+      await _saveCursor('transactions', started);
+    } catch (e) {
+      debugPrint('Failed to fetch expenses from remote: $e');
+    }
+  }
 
-        if (_isTombstone(data)) {
-          await db.delete(
-            'expenses',
-            where: 'remote_id = ?',
-            whereArgs: [remoteId],
-          );
-          continue;
-        }
+  /// Merge pulled transactions into the local table: apply tombstones,
+  /// update rows known by server id (unless they have unpushed edits), link
+  /// rows we pushed ourselves by client id, and insert the rest.
+  @visibleForTesting
+  Future<void> mergeRemoteExpenses(
+    DatabaseExecutor db,
+    List<dynamic> remoteData,
+  ) async {
+    for (var data in remoteData) {
+      final remoteId = data['id'];
+      if (remoteId == null) continue;
 
-        final existing = await db.query(
+      if (_isTombstone(data)) {
+        await db.delete(
           'expenses',
           where: 'remote_id = ?',
           whereArgs: [remoteId],
         );
-        final localMatch = await db.query(
-          'expenses',
-          where: 'id = ?',
-          whereArgs: [remoteId],
-        );
+        continue;
+      }
 
-        if (existing.isNotEmpty) {
-          // Take server-side edits, but never overwrite unsynced local ones.
-          if (existing.first['is_synced'] == 1) {
-            await db.update(
-              'expenses',
-              _expenseFromRemote(data),
-              where: 'remote_id = ?',
-              whereArgs: [remoteId],
-            );
-          }
-          continue;
-        }
+      final existing = await db.query(
+        'expenses',
+        where: 'remote_id = ?',
+        whereArgs: [remoteId],
+      );
 
-        if (await _linkByClientId(db, 'expenses', data)) continue;
-
-        final expenseMap = _expenseFromRemote(data);
-        if (localMatch.isEmpty) {
-          expenseMap['uuid'] = data['client_id'];
-          await db.insert('expenses', expenseMap);
-        } else {
+      if (existing.isNotEmpty) {
+        // Take server-side edits, but never overwrite unsynced local ones.
+        if (existing.first['is_synced'] == 1) {
           await db.update(
             'expenses',
-            expenseMap,
-            where: 'id = ?',
+            _expenseFromRemote(
+              data,
+              localTimestamp: existing.first['timestamp'] as String?,
+            ),
+            where: 'remote_id = ?',
             whereArgs: [remoteId],
           );
         }
+        continue;
       }
-      await _saveCursor('transactions', started);
-    } catch (e) {
-      debugPrint('Failed to fetch expenses from remote: $e');
+
+      if (await _linkByClientId(db, 'expenses', data)) continue;
+
+      // Not known locally (matched by remote_id / client_id above):
+      // insert it. Never match on the local primary key, which is an
+      // unrelated autoincrement id that can collide with the server's.
+      final expenseMap = _expenseFromRemote(data);
+      expenseMap['uuid'] = data['client_id'];
+      await db.insert('expenses', expenseMap);
     }
   }
 
@@ -359,22 +378,31 @@ class SyncService {
       final workout = Workout.fromMap(map).copyWith(exercises: exercises);
 
       try {
-        final response = await _apiService.post(
-          'fitness/workouts/',
-          data: {...workout.toMap(), 'client_id': map['uuid']},
-        );
-        final remoteId = response.data['id'];
+        // The server keeps exercises and sets nested in the workout, so the
+        // whole session is sent: POST the first time, PUT once it has an id.
+        final existingRemoteId = map['remote_id'];
+        final payload = {...workout.toApi(), 'client_id': map['uuid']};
+        final response = existingRemoteId == null
+            ? await _apiService.post('fitness/workouts/', data: payload)
+            : await _apiService.put(
+                'fitness/workouts/$existingRemoteId/',
+                data: payload,
+              );
+        final remoteId = response.data['id'] ?? existingRemoteId;
+
+        // A set logged while the request was in flight must not be marked
+        // synced; leave it dirty so the next sync pushes it.
+        final after = await _loadFullWorkoutData(workoutId);
+        final unchanged =
+            jsonEncode(payload['exercises']) ==
+            jsonEncode(after.map((e) => e.toApi()).toList());
 
         await db.update(
           'workouts',
-          {'remote_id': remoteId, 'is_synced': 1},
+          {'remote_id': remoteId, 'is_synced': unchanged ? 1 : 0},
           where: 'id = ?',
           whereArgs: [workoutId],
         );
-
-        // Update nested exercises/sets remote_ids if needed,
-        // but since we push the whole workout, the server handles children.
-        // For simplicity, we just mark the top level as synced.
       } catch (e) {
         debugPrint('Failed to sync workout $workoutId: $e');
       }
@@ -404,7 +432,20 @@ class SyncService {
           whereArgs: [remoteId],
         );
 
-        if (existing.isEmpty && !await _linkByClientId(db, 'workouts', data)) {
+        if (existing.isNotEmpty) {
+          // Take edits made on another device, unless this one has
+          // unpushed changes of its own (last write wins on push).
+          if (existing.first['is_synced'] == 1) {
+            await _updateRemoteWorkoutLocally(
+              db,
+              existing.first['id'] as int,
+              data,
+            );
+          }
+          continue;
+        }
+
+        if (!await _linkByClientId(db, 'workouts', data)) {
           // Save remote workout and its children locally
           await _saveRemoteWorkoutLocally(data);
         }
@@ -415,12 +456,19 @@ class SyncService {
     }
   }
 
+  /// The server returns UTC; local queries compare local ISO strings.
+  static String? _localTimestamp(Object? raw) {
+    final parsed = DateTime.tryParse(raw?.toString() ?? '');
+    return parsed?.toLocal().toIso8601String() ?? raw?.toString();
+  }
+
   Future<List<Exercise>> _loadFullWorkoutData(int workoutId) async {
     final db = await _dbService.getDatabase();
     final exerciseMaps = await db.query(
       'exercises',
       where: 'workout_id = ?',
       whereArgs: [workoutId],
+      orderBy: 'id ASC',
     );
 
     final exercises = <Exercise>[];
@@ -429,6 +477,7 @@ class SyncService {
         'sets',
         where: 'exercise_id = ?',
         whereArgs: [exMap['id']],
+        orderBy: 'set_number ASC',
       );
       final sets = setMaps.map((s) => SetData.fromMap(s)).toList();
       exercises.add(Exercise.fromMap(exMap).copyWith(sets: sets));
@@ -440,7 +489,7 @@ class SyncService {
     final db = await _dbService.getDatabase();
     final workoutMap = {
       'type': data['type'],
-      'timestamp': data['timestamp'],
+      'timestamp': _localTimestamp(data['timestamp']),
       'notes': data['notes'],
       'uuid': data['client_id'],
       'remote_id': data['id'],
@@ -448,8 +497,68 @@ class SyncService {
     };
 
     final localWorkoutId = await db.insert('workouts', workoutMap);
+    await _insertRemoteExercises(db, localWorkoutId, data['exercises']);
+  }
 
-    final exercises = data['exercises'];
+  /// Refresh a synced local workout from the server's copy. Children are
+  /// replaced only when they actually differ, so our own push echoing back
+  /// doesn't reshuffle local set ids mid-session.
+  Future<void> _updateRemoteWorkoutLocally(
+    DatabaseExecutor db,
+    int localWorkoutId,
+    Map<String, dynamic> data,
+  ) async {
+    await db.update(
+      'workouts',
+      {
+        'type': data['type'],
+        'timestamp': _localTimestamp(data['timestamp']),
+        'notes': data['notes'],
+      },
+      where: 'id = ?',
+      whereArgs: [localWorkoutId],
+    );
+
+    final remote = data['exercises'];
+    if (remote is! List) return;
+    final local = await _loadFullWorkoutData(localWorkoutId);
+    final remoteContent = remote
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (e) => {
+            'name': e['name'],
+            'muscle_group': e['muscle_group'],
+            'sets': [
+              for (final s in (e['sets'] as List? ?? const []))
+                if (s is Map<String, dynamic>)
+                  {
+                    'set_number': s['set_number'],
+                    'weight': (double.tryParse(s['weight'].toString()) ?? 0.0)
+                        .toString(),
+                    'reps': s['reps'],
+                    'is_completed': s['is_completed'] == true,
+                  },
+            ],
+          },
+        )
+        .toList();
+    final localContent = local.map((e) => e.toApi()).toList();
+    if (jsonEncode(remoteContent) == jsonEncode(localContent)) return;
+
+    // Sets cascade-delete with their exercises.
+    await db.delete(
+      'exercises',
+      where: 'workout_id = ?',
+      whereArgs: [localWorkoutId],
+    );
+    await _insertRemoteExercises(db, localWorkoutId, remote);
+  }
+
+  Future<void> _insertRemoteExercises(
+    DatabaseExecutor db,
+    int localWorkoutId,
+    Object? exercises,
+  ) async {
     if (exercises is List) {
       for (final exData in exercises) {
         if (exData is! Map<String, dynamic>) continue;
@@ -503,7 +612,52 @@ class SyncService {
 
   /// Accepts blueprint `transactions` JSON (txn_date/note/category uuid) and
   /// falls back to the legacy shape (timestamp/description/category name).
-  Map<String, dynamic> _expenseFromRemote(Map<String, dynamic> data) {
+  /// The server only stores `txn_date` (a calendar day), but local queries
+  /// compare full ISO timestamps, so never store the bare date. Keep the
+  /// local time when the day is unchanged, else use the server's
+  /// `created_at` time on that day, else local midnight.
+  @visibleForTesting
+  static String timestampFromRemote(
+    Map<String, dynamic> data,
+    String? localTimestamp,
+  ) {
+    final raw = (data['txn_date'] ?? data['timestamp'])?.toString();
+    final remote = raw == null ? null : DateTime.tryParse(raw);
+    if (remote == null) {
+      return localTimestamp ?? DateTime.now().toIso8601String();
+    }
+    // A full timestamp from the server (legacy `timestamp`) is already fine.
+    if (raw!.length > 10) return remote.toIso8601String();
+
+    final day = DateTime(remote.year, remote.month, remote.day);
+    bool sameDay(DateTime t) =>
+        t.year == day.year && t.month == day.month && t.day == day.day;
+
+    final local = localTimestamp == null
+        ? null
+        : DateTime.tryParse(localTimestamp);
+    if (local != null && sameDay(local)) return local.toIso8601String();
+
+    final created = DateTime.tryParse(
+      data['created_at']?.toString() ?? '',
+    )?.toLocal();
+    if (created != null && sameDay(created)) {
+      return DateTime(
+        day.year,
+        day.month,
+        day.day,
+        created.hour,
+        created.minute,
+        created.second,
+      ).toIso8601String();
+    }
+    return day.toIso8601String();
+  }
+
+  Map<String, dynamic> _expenseFromRemote(
+    Map<String, dynamic> data, {
+    String? localTimestamp,
+  }) {
     final rawCategory = data['category'] ?? data['category_id'];
     final categoryId = data['category_id'] ?? data['category'];
     final legacyName = rawCategory is String && !rawCategory.contains('-')
@@ -519,7 +673,7 @@ class SyncService {
     return {
       'amount': double.tryParse(data['amount'].toString()) ?? 0.0,
       'category': bucket,
-      'timestamp': data['txn_date'] ?? data['timestamp'],
+      'timestamp': timestampFromRemote(data, localTimestamp),
       'description': data['note'] ?? data['description'],
       'type': data['type'] ?? 'expense',
       'category_id': legacyName == null ? categoryId?.toString() : null,
@@ -641,16 +795,30 @@ class SyncService {
 
       // A member with the same username may exist locally without a
       // remote_id yet (e.g. the owner's own membership row).
-      final localMatch = await db.query(
+      var localMatch = await db.query(
         'group_members',
         where: 'group_id = ? AND username = ? AND remote_id IS NULL',
         whereArgs: [localGroupId, m['username']],
       );
+      // A group made before signing in has a local owner named 'Me'; the
+      // server's owner is the account that pushed it, i.e. the same person.
+      if (localMatch.isEmpty && m['role'] == 'owner') {
+        localMatch = await db.query(
+          'group_members',
+          where: "group_id = ? AND role = 'owner' AND remote_id IS NULL",
+          whereArgs: [localGroupId],
+        );
+      }
 
       if (localMatch.isNotEmpty) {
         await db.update(
           'group_members',
-          {'remote_id': remoteMemberId, 'is_synced': 1, 'user_id': m['user']},
+          {
+            'remote_id': remoteMemberId,
+            'is_synced': 1,
+            'user_id': m['user'],
+            'username': m['username'],
+          },
           where: 'id = ?',
           whereArgs: [localMatch.first['id']],
         );
@@ -671,12 +839,15 @@ class SyncService {
   /// Push locally-added members (invites) that haven't reached the server.
   Future<void> _syncGroupMembers() async {
     final db = await _dbService.getDatabase();
+    await _mergeOrphanOwners(db);
 
+    // Members the server already rejected (no such user) are not retried.
     final unsynced = await db.rawQuery('''
       SELECT gm.*, g.remote_id AS group_remote_id
       FROM group_members gm
       JOIN groups g ON g.id = gm.group_id
       WHERE gm.is_synced = 0 AND g.remote_id IS NOT NULL
+        AND gm.sync_error IS NULL
     ''');
 
     for (var map in unsynced) {
@@ -696,10 +867,71 @@ class SyncService {
           where: 'id = ?',
           whereArgs: [map['id']],
         );
+      } on DioException catch (e) {
+        // 400 = the server can't add them (e.g. no account with that
+        // username). Record why and stop retrying; other errors retry.
+        if (e.response?.statusCode == 400) {
+          final data = e.response?.data;
+          final reason = data is Map && data['username'] is List
+              ? (data['username'] as List).join(' ')
+              : 'Could not add this member.';
+          await db.update(
+            'group_members',
+            {'sync_error': reason},
+            where: 'id = ?',
+            whereArgs: [map['id']],
+          );
+        }
+        debugPrint('Failed to sync group member ${map['id']}: $e');
       } catch (e) {
         debugPrint('Failed to sync group member ${map['id']}: $e');
       }
     }
+  }
+
+  /// Groups pushed by older builds got a separate server-owner row while
+  /// the local 'Me' owner kept no server id, which blocked every expense
+  /// paid by or split with 'Me'. Fold such orphans into the linked owner.
+  Future<void> _mergeOrphanOwners(DatabaseExecutor db) async {
+    final pairs = await db.rawQuery('''
+      SELECT orphan.id AS orphan_id, linked.id AS linked_id
+      FROM group_members orphan
+      JOIN group_members linked
+        ON linked.group_id = orphan.group_id
+       AND linked.role = 'owner' AND linked.remote_id IS NOT NULL
+      WHERE orphan.role = 'owner' AND orphan.remote_id IS NULL
+    ''');
+    for (final pair in pairs) {
+      final orphan = pair['orphan_id'];
+      final linked = pair['linked_id'];
+      if (db is Database) {
+        await db.transaction((txn) => _repointMember(txn, orphan, linked));
+      } else {
+        await _repointMember(db, orphan, linked);
+      }
+    }
+  }
+
+  Future<void> _repointMember(
+    DatabaseExecutor db,
+    Object? from,
+    Object? to,
+  ) async {
+    // Repoint references first: deleting the row cascades to them.
+    for (final (table, column) in const [
+      ('group_expenses', 'payer_member_id'),
+      ('group_expense_splits', 'member_id'),
+      ('settlements', 'from_member_id'),
+      ('settlements', 'to_member_id'),
+    ]) {
+      await db.update(
+        table,
+        {column: to},
+        where: '$column = ?',
+        whereArgs: [from],
+      );
+    }
+    await db.delete('group_members', where: 'id = ?', whereArgs: [from]);
   }
 
   /// Sync group expenses (with their splits), translating local ids to
@@ -970,28 +1202,5 @@ class SyncService {
     } catch (e) {
       debugPrint('Failed to fetch settlements from remote: $e');
     }
-  }
-
-  /// Cleanup synced data older than 30 days to keep the local cache small
-  Future<void> _cleanupOldSyncedData() async {
-    final db = await _dbService.getDatabase();
-    final cutoff = DateTime.now()
-        .subtract(const Duration(days: 30))
-        .toIso8601String();
-
-    // Only delete data that HAS been synced to the server
-    await db.delete(
-      'expenses',
-      where: 'is_synced = 1 AND timestamp < ?',
-      whereArgs: [cutoff],
-    );
-    await db.delete(
-      'workouts',
-      where: 'is_synced = 1 AND timestamp < ?',
-      whereArgs: [cutoff],
-    );
-    // Exercises and sets will be deleted automatically due to CASCADE in workouts
-
-    debugPrint('Local cache cleaned up. Records older than 30 days removed.');
   }
 }

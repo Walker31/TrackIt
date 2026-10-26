@@ -1,3 +1,4 @@
+import '../expense_entry_fields.dart';
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -198,19 +199,16 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
                 ),
               ],
             ),
-            const SizedBox(height: 24),
-            TextField(
-              controller: _amountController,
-              keyboardType: TextInputType.number,
-              onChanged: (_) => setState(() {}),
-              style: AppTextStyles.h1.copyWith(color: AppColors.expense),
-              decoration: const InputDecoration(
-                prefixText: "₹",
-                hintText: "0.00",
-                border: InputBorder.none,
-              ),
+            const SizedBox(height: 16),
+            ExpenseEntryFields(
+              descriptionController: _descController,
+              amountController: _amountController,
+              icon: _category.icon,
+              iconColor: _category.color,
+              accent: AppColors.expense,
+              onAmountChanged: (_) => setState(() {}),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             Text("Paid by", style: AppTextStyles.label),
             const SizedBox(height: 8),
             _buildMemberDropdown(),
@@ -240,11 +238,6 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
                   );
                 },
               ),
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _descController,
-              decoration: InputDecoration(hintText: "Description (optional)"),
             ),
             const SizedBox(height: 20),
             Text("Split", style: AppTextStyles.label),

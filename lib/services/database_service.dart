@@ -53,16 +53,42 @@ class DatabaseService {
 
   Future<Database> _openDatabase() async {
     final databasePath = await getDatabasesPath();
-    final dbPath = path.join(databasePath, _databaseName);
+    return _open(path.join(databasePath, _databaseName));
+  }
 
-    return openDatabase(
-      dbPath,
-      version: _databaseVersion,
-      onConfigure: _configureDatabase,
-      onCreate: _createDatabase,
-      onUpgrade: _upgradeDatabase,
-      onOpen: _repairSchema,
+  Future<Database> _open(String dbPath) => openDatabase(
+    dbPath,
+    version: _databaseVersion,
+    onConfigure: _configureDatabase,
+    onCreate: _createDatabase,
+    onUpgrade: _upgradeDatabase,
+    onOpen: _repairSchema,
+  );
+
+  /// Tests: swap in a fresh in-memory database with the real schema, and
+  /// make every service use it.
+  @visibleForTesting
+  static Future<Database> openInMemoryForTesting() async {
+    sqfliteFfiInit();
+    // Assigning the global factory logs a warning; only do it once.
+    if (databaseFactoryOrNull != databaseFactoryFfi) {
+      databaseFactory = databaseFactoryFfi;
+    }
+    _initialized = true;
+    await _database?.close();
+    _database = await databaseFactory.openDatabase(
+      inMemoryDatabasePath,
+      options: OpenDatabaseOptions(
+        version: _databaseVersion,
+        onConfigure: _instance._configureDatabase,
+        onCreate: _instance._createDatabase,
+        onUpgrade: _instance._upgradeDatabase,
+        onOpen: _instance._repairSchema,
+        // A new, empty database per call rather than a shared one.
+        singleInstance: false,
+      ),
     );
+    return _database!;
   }
 
   Future<void> _configureDatabase(Database db) async {
@@ -109,6 +135,21 @@ class DatabaseService {
   Future<void> _repairSchema(Database db) async {
     await db.transaction((txn) async {
       await _ensureCompatibleSchema(txn);
+      // Older syncs stored the server's bare `txn_date` (YYYY-MM-DD), which
+      // falls outside the ISO range queries; pin those rows to midnight.
+      await txn.execute(
+        "UPDATE expenses SET timestamp = timestamp || 'T00:00:00.000' "
+        'WHERE length(timestamp) = 10',
+      );
+      // Overlapping syncs used to insert the same pulled row twice; keep
+      // the first copy of anything that shares a server id.
+      for (final table in ['expenses', 'workouts']) {
+        await txn.execute(
+          'DELETE FROM $table WHERE remote_id IS NOT NULL AND id NOT IN '
+          '(SELECT MIN(id) FROM $table WHERE remote_id IS NOT NULL '
+          'GROUP BY remote_id)',
+        );
+      }
       await _seedDefaultSettings(txn);
       await _createIndexes(txn);
     });
@@ -272,6 +313,8 @@ class DatabaseService {
     await _ensureBlueprintSchema(db);
     await SyncOutbox.ensureSchema(db);
 
+    // Why the server refused a group member (e.g. unknown username).
+    await _ensureColumn(db, 'group_members', 'sync_error', 'TEXT');
     await _ensureColumn(db, 'expenses', 'remote_id', 'INTEGER');
     await _ensureColumn(
       db,
