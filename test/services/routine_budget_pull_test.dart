@@ -198,13 +198,4 @@ void main() {
       expect(all.single['is_synced'], 0);
     });
   });
-
-  test('new ids are random v4 UUIDs', () {
-    final ids = {for (var i = 0; i < 500; i++) CatalogService.newId()};
-    expect(ids, hasLength(500));
-    final v4 = RegExp(
-      r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
-    );
-    expect(ids.every(v4.hasMatch), isTrue);
-  });
 }

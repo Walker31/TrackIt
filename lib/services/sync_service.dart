@@ -10,6 +10,7 @@ import 'coalescing_runner.dart';
 import 'sync_outbox.dart';
 import '../models/expenses.dart';
 import '../models/workouts.dart';
+import 'id_generator.dart';
 import 'package:sqflite/sqflite.dart'
     show ConflictAlgorithm, Database, DatabaseExecutor;
 
@@ -571,7 +572,7 @@ class SyncService {
       } else {
         localId = await db.insert('routines', {
           ...row,
-          'uuid': data['client_id'],
+          'uuid': IdGenerator.orNew(data['client_id']),
           'remote_id': remoteId,
         });
       }
@@ -693,7 +694,7 @@ class SyncService {
       // insert it. Never match on the local primary key, which is an
       // unrelated autoincrement id that can collide with the server's.
       final expenseMap = _expenseFromRemote(data);
-      expenseMap['uuid'] = data['client_id'];
+      expenseMap['uuid'] = IdGenerator.orNew(data['client_id']);
       await db.insert('expenses', expenseMap);
     }
   }
@@ -834,7 +835,7 @@ class SyncService {
       'type': data['type'],
       'timestamp': _localTimestamp(data['timestamp']),
       'notes': data['notes'],
-      'uuid': data['client_id'],
+      'uuid': IdGenerator.orNew(data['client_id']),
       'remote_id': data['id'],
       'is_synced': 1,
     };
@@ -907,6 +908,7 @@ class SyncService {
         if (exData is! Map<String, dynamic>) continue;
 
         final exMap = {
+          'uuid': IdGenerator.uuid(),
           'workout_id': localWorkoutId,
           'name': exData['name'],
           'muscle_group': exData['muscle_group'],
@@ -922,6 +924,7 @@ class SyncService {
             if (setData is! Map<String, dynamic>) continue;
 
             final sMap = {
+              'uuid': IdGenerator.uuid(),
               'exercise_id': localExId,
               'set_number': setData['set_number'],
               'weight': double.tryParse(setData['weight'].toString()) ?? 0.0,
@@ -1116,7 +1119,7 @@ class SyncService {
       int localGroupId;
       if (existing.isEmpty) {
         localGroupId = await db.insert('groups', {
-          'uuid': data['client_id'],
+          'uuid': IdGenerator.orNew(data['client_id']),
           'remote_id': remoteId,
           'name': data['name'],
           'icon': data['icon'],
@@ -1192,6 +1195,7 @@ class SyncService {
         );
       } else {
         await db.insert('group_members', {
+          'uuid': IdGenerator.uuid(),
           'remote_id': remoteMemberId,
           'group_id': localGroupId,
           'user_id': m['user'],
@@ -1504,7 +1508,7 @@ class SyncService {
       } else {
         localExpenseId = await db.insert('group_expenses', {
           ...row,
-          'uuid': data['client_id'],
+          'uuid': IdGenerator.orNew(data['client_id']),
           'remote_id': remoteId,
         });
       }
@@ -1584,7 +1588,7 @@ class SyncService {
       } else {
         await db.insert('settlements', {
           ...row,
-          'uuid': data['client_id'],
+          'uuid': IdGenerator.orNew(data['client_id']),
           'remote_id': remoteId,
         });
       }

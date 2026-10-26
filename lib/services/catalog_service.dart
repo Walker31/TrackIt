@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:sqflite/sqflite.dart';
 import '../models/expenses.dart';
 import 'api_service.dart';
@@ -6,24 +5,12 @@ import 'app_mode_service.dart';
 import 'database_service.dart';
 import 'sync_outbox.dart';
 import 'sync_service.dart';
+import 'id_generator.dart';
 
 /// Local access to the blueprint's reference data: categories,
 /// subcategories, events and per-category monthly budgets.
 class CatalogService {
   final DatabaseService _dbService = DatabaseService();
-
-  static final _random = Random.secure();
-
-  /// Random RFC 4122 v4 id. These become server primary keys, so they must
-  /// not collide across devices or users.
-  static String newId() {
-    final b = List<int>.generate(16, (_) => _random.nextInt(256));
-    b[6] = (b[6] & 0x0f) | 0x40; // version 4
-    b[8] = (b[8] & 0x3f) | 0x80; // RFC 4122 variant
-    final h = b.map((v) => v.toRadixString(16).padLeft(2, '0')).join();
-    return '${h.substring(0, 8)}-${h.substring(8, 12)}-'
-        '${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}';
-  }
 
   Future<List<Category>> getCategories({TxnType? type}) async {
     final db = await _dbService.getDatabase();
@@ -55,7 +42,7 @@ class CatalogService {
   }) async {
     final db = await _dbService.getDatabase();
     final category = Category(
-      id: newId(),
+      id: IdGenerator.uuid(),
       userId: 'local',
       name: name,
       icon: icon ?? 'dots',
@@ -69,7 +56,11 @@ class CatalogService {
 
   Future<Subcategory> addSubcategory(String categoryId, String name) async {
     final db = await _dbService.getDatabase();
-    final sub = Subcategory(id: newId(), categoryId: categoryId, name: name);
+    final sub = Subcategory(
+      id: IdGenerator.subcategoryId(categoryId, name),
+      categoryId: categoryId,
+      name: name,
+    );
     await db.insert(
       'subcategories',
       sub.toMap(),
@@ -94,7 +85,7 @@ class CatalogService {
   }) async {
     final db = await _dbService.getDatabase();
     final event = SpendEvent(
-      id: newId(),
+      id: IdGenerator.uuid(),
       title: title,
       eventDate: eventDate ?? DateTime.now(),
       endDate: endDate,
@@ -139,7 +130,7 @@ class CatalogService {
     final db = await _dbService.getDatabase();
     final existing = await getBudget(categoryId, month);
     final budget = Budget(
-      id: existing?.id ?? newId(),
+      id: existing?.id ?? IdGenerator.uuid(),
       categoryId: categoryId,
       month: month,
       limitAmount: limitAmount,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'expense_category.dart';
+import '../../services/id_generator.dart';
 
 /// Mirrors `transactions.type` / `categories.type` in the PaisaPulse blueprint.
 enum TxnType {
@@ -206,7 +207,7 @@ final List<Subcategory> defaultSubcategories = [
   for (final e in _defaultSubs.entries)
     for (final name in e.value)
       Subcategory(
-        id: '${_cid(e.key)}:$name',
+        id: IdGenerator.subcategoryId(_cid(e.key), name),
         categoryId: _cid(e.key),
         name: name,
       ),

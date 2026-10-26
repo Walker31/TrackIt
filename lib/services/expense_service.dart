@@ -4,6 +4,7 @@ import 'sync_service.dart';
 import 'sync_outbox.dart';
 import '../models/expenses.dart';
 import 'package:sqflite/sqflite.dart';
+import 'id_generator.dart';
 
 class ExpenseService {
   final DatabaseService _dbService = DatabaseService();
@@ -16,6 +17,7 @@ class ExpenseService {
     // 1. Save locally first
     final map = expense.toMap();
     map['is_synced'] = 0;
+    map['uuid'] = IdGenerator.uuid();
     final localId = await db.insert('expenses', map);
 
     // 2. Push in the background. Only the sync runner pushes rows: a direct

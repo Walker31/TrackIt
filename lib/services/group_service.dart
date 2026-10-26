@@ -2,6 +2,7 @@ import 'database_service.dart';
 import 'sync_outbox.dart';
 import 'sync_service.dart';
 import '../models/expenses.dart';
+import 'id_generator.dart';
 
 class GroupService {
   final DatabaseService _dbService = DatabaseService();
@@ -21,6 +22,7 @@ class GroupService {
     // exists (the server would then create a second owner).
     final groupId = await db.transaction((txn) async {
       final groupId = await txn.insert('groups', {
+        'uuid': IdGenerator.uuid(),
         'name': name,
         'icon': icon,
         'created_at': now.toIso8601String(),
@@ -28,6 +30,7 @@ class GroupService {
       });
 
       await txn.insert('group_members', {
+        'uuid': IdGenerator.uuid(),
         'group_id': groupId,
         'user_id': currentUserId,
         'username': currentUsername,
@@ -57,6 +60,7 @@ class GroupService {
     }
 
     await db.insert('group_members', {
+      'uuid': IdGenerator.uuid(),
       'group_id': groupId,
       'username': username,
       'role': 'member',
@@ -129,7 +133,10 @@ class GroupService {
     // The expense and its splits land together: a sync running in between
     // would otherwise push the expense with no splits.
     final expenseId = await db.transaction((txn) async {
-      final expenseId = await txn.insert('group_expenses', map);
+      final expenseId = await txn.insert('group_expenses', {
+        ...map,
+        'uuid': IdGenerator.uuid(),
+      });
       for (final split in expense.splits) {
         await txn.insert('group_expense_splits', {
           'expense_id': expenseId,
@@ -157,7 +164,7 @@ class GroupService {
     final db = await _dbService.getDatabase();
     final map = settlement.toMap();
     map['is_synced'] = 0;
-    await db.insert('settlements', map);
+    await db.insert('settlements', {...map, 'uuid': IdGenerator.uuid()});
     _syncService.performSync();
   }
 

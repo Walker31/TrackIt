@@ -4,6 +4,7 @@ import 'database_service.dart';
 import 'sync_service.dart';
 import 'sync_outbox.dart';
 import '../models/workouts.dart';
+import 'id_generator.dart';
 
 class WorkoutService {
   final DatabaseService _dbService = DatabaseService();
@@ -18,6 +19,7 @@ class WorkoutService {
     map['is_synced'] = 0;
     map.remove('exercises'); // Nested list doesn't go into sqlite directly
 
+    map['uuid'] = IdGenerator.uuid();
     final localId = await db.insert('workouts', map);
     final savedWorkout = workout.copyWith(id: localId);
 
@@ -100,6 +102,7 @@ class WorkoutService {
 
     final localId = await db.transaction((txn) async {
       final localId = await txn.insert('exercises', {
+        'uuid': IdGenerator.uuid(),
         'workout_id': exercise.workoutId,
         'name': exercise.name,
         'muscle_group': exercise.muscleGroup,
@@ -108,6 +111,7 @@ class WorkoutService {
 
       for (final s in exercise.sets) {
         await txn.insert('sets', {
+          'uuid': IdGenerator.uuid(),
           'exercise_id': localId,
           'set_number': s.setNumber,
           'weight': s.weight,
@@ -128,6 +132,7 @@ class WorkoutService {
   Future<SetData> addSet(SetData setData) async {
     final db = await _dbService.getDatabase();
     final localId = await db.insert('sets', {
+      'uuid': IdGenerator.uuid(),
       'exercise_id': setData.exerciseId,
       'set_number': setData.setNumber,
       'weight': setData.weight,
@@ -242,7 +247,10 @@ class WorkoutService {
     rMap.remove('routine_exercises');
 
     final localId = await db.transaction((txn) async {
-      final localId = await txn.insert('routines', rMap);
+      final localId = await txn.insert('routines', {
+        ...rMap,
+        'uuid': IdGenerator.uuid(),
+      });
       for (var ex in routine.exercises) {
         final exMap = ex.toMap();
         exMap['routine_id'] = localId;
@@ -284,6 +292,7 @@ class WorkoutService {
     // One transaction, so a sync never pushes a half-built session.
     final workoutId = await db.transaction((txn) async {
       final workoutId = await txn.insert('workouts', {
+        'uuid': IdGenerator.uuid(),
         'type': routine.type.name,
         'timestamp': now.toIso8601String(),
         'notes': 'Started from ${routine.name}',
@@ -292,6 +301,7 @@ class WorkoutService {
 
       for (final routineExercise in routine.exercises) {
         final exerciseId = await txn.insert('exercises', {
+          'uuid': IdGenerator.uuid(),
           'workout_id': workoutId,
           'name': routineExercise.name,
           'muscle_group': routineExercise.muscleGroup,
@@ -300,6 +310,7 @@ class WorkoutService {
 
         for (int i = 1; i <= routineExercise.setsCount; i++) {
           await txn.insert('sets', {
+            'uuid': IdGenerator.uuid(),
             'exercise_id': exerciseId,
             'set_number': i,
             'weight': 0.0,
