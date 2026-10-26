@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 /// Animates a rupee amount counting up from 0 (or its previous value) to
 /// [value] whenever it changes.
@@ -23,10 +24,12 @@ class CountUpText extends StatelessWidget {
       duration: const Duration(milliseconds: 700),
       curve: Curves.easeOutCubic,
       builder: (context, animatedValue, _) {
-        return Text(
-          '$prefix${animatedValue.toStringAsFixed(decimals)}',
-          style: style,
+        // Indian digit grouping, like formatRupees: ₹1,250 / ₹1,25,000.
+        final format = NumberFormat.decimalPatternDigits(
+          locale: 'en_IN',
+          decimalDigits: decimals,
         );
+        return Text('$prefix${format.format(animatedValue)}', style: style);
       },
     );
   }

@@ -5,6 +5,7 @@ import '../app_card.dart';
 import '../section_header.dart';
 import '../donut_chart.dart';
 import '../../models/expenses.dart';
+import '../../utils/format.dart';
 import '../../providers/expense_provider.dart';
 import '../animated/fade_slide_in.dart';
 
@@ -21,7 +22,7 @@ class RecentExpensesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final summary = provider.todaySummary;
-    final hasData = summary != null && summary.categoryTotals.isNotEmpty;
+    final hasData = provider.expenses.isNotEmpty;
     final firstLoad = provider.isLoading && summary == null;
 
     return Column(
@@ -43,7 +44,7 @@ class RecentExpensesSection extends StatelessWidget {
         else if (!hasData)
           _empty("No expenses logged today")
         else ...[
-          _buildCategoryOverview(summary),
+          _buildCategoryOverview(),
           const SizedBox(height: 12),
           _buildRecentTransactions(provider.expenses),
         ],
@@ -62,14 +63,11 @@ class RecentExpensesSection extends StatelessWidget {
     ),
   );
 
-  Widget _buildCategoryOverview(DailyExpenseSummary summary) {
-    final nonZero = Map.fromEntries(
-      summary.categoryTotals.entries.where((e) => e.value > 0),
-    );
-    if (nonZero.isEmpty) return _empty("No expenses logged today");
-    final topCategory = nonZero.entries.reduce(
-      (a, b) => a.value > b.value ? a : b,
-    );
+  Widget _buildCategoryOverview() {
+    final spend = provider.spendByCategory(provider.expenses);
+    if (spend.isEmpty) return _empty("No expenses logged today");
+    final total = spend.fold<double>(0, (sum, e) => sum + e.value);
+    final top = spend.first.key;
 
     return AppCard(
       child: Row(
@@ -81,15 +79,14 @@ class RecentExpensesSection extends StatelessWidget {
               alignment: Alignment.center,
               children: [
                 DonutChart(
-                  categoryTotals: nonZero,
-                  totalAmount: summary.totalAmount,
+                  segments: [
+                    for (final e in spend)
+                      (color: e.key.colorValue, value: e.value),
+                  ],
+                  totalAmount: total,
                   size: 72,
                 ),
-                Icon(
-                  topCategory.key.icon,
-                  color: topCategory.key.color,
-                  size: 20,
-                ),
+                Icon(top.iconData, color: top.colorValue, size: 20),
               ],
             ),
           ),
@@ -104,10 +101,10 @@ class RecentExpensesSection extends StatelessWidget {
                     color: AppColors.textSecondary,
                   ),
                 ),
-                Text(topCategory.key.displayName, style: AppTextStyles.h3),
+                Text(top.name, style: AppTextStyles.h3),
                 const SizedBox(height: 8),
                 Text(
-                  "₹${summary.totalAmount.toStringAsFixed(0)} today",
+                  "${formatRupees(total)} today",
                   style: AppTextStyles.bodyMd.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -122,6 +119,7 @@ class RecentExpensesSection extends StatelessWidget {
 
   Widget _buildRecentTransactions(List<Expense> expenses) {
     final recent = expenses.take(3).toList();
+    final categories = [for (final e in recent) provider.categoryOf(e)];
     return Column(
       children: [
         for (var i = 0; i < recent.length; i++)
@@ -135,12 +133,12 @@ class RecentExpensesSection extends StatelessWidget {
                     width: 38,
                     height: 38,
                     decoration: BoxDecoration(
-                      color: recent[i].category.color.withValues(alpha: 0.1),
+                      color: categories[i].colorValue.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      recent[i].category.icon,
-                      color: recent[i].category.color,
+                      categories[i].iconData,
+                      color: categories[i].colorValue,
                       size: 18,
                     ),
                   ),
@@ -150,8 +148,7 @@ class RecentExpensesSection extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          recent[i].description ??
-                              recent[i].category.displayName,
+                          recent[i].description ?? categories[i].name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: AppTextStyles.bodyMd.copyWith(
@@ -159,7 +156,7 @@ class RecentExpensesSection extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          recent[i].category.displayName,
+                          categories[i].name,
                           style: AppTextStyles.bodySm.copyWith(
                             color: AppColors.textSecondary,
                           ),
@@ -168,7 +165,8 @@ class RecentExpensesSection extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    "-₹${recent[i].amount.toStringAsFixed(0)}",
+                    "${recent[i].isIncome ? '+' : '-'}"
+                    "${formatRupees(recent[i].amount)}",
                     style: AppTextStyles.bodyMd.copyWith(
                       fontWeight: FontWeight.w600,
                     ),

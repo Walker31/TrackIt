@@ -6,6 +6,7 @@ import '../../models/expenses.dart';
 import '../../services/cloudinary_service.dart';
 import '../glass_container.dart';
 import '../app_button.dart';
+import '../../utils/format.dart';
 
 class AddGroupExpenseSheet extends StatefulWidget {
   final Group group;
@@ -418,7 +419,12 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
             )
           else if (included)
             Text(
-              "₹${(_amount / (_includedMemberIds.isEmpty ? 1 : _includedMemberIds.length)).toStringAsFixed(0)}",
+              formatRupees(
+                (_amount /
+                    (_includedMemberIds.isEmpty
+                        ? 1
+                        : _includedMemberIds.length)),
+              ),
               style: AppTextStyles.bodySm.copyWith(
                 color: AppColors.textSecondary,
               ),

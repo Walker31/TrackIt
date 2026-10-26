@@ -6,6 +6,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../animated/fade_slide_in.dart';
 import '../glass_container.dart';
+import '../../utils/format.dart';
 
 class _TripData {
   final SpendEvent event;
@@ -165,7 +166,7 @@ class _TripCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '₹${data.total.toStringAsFixed(0)}',
+                    formatRupees(data.total),
                     style: AppTextStyles.bodyLg.copyWith(
                       fontWeight: FontWeight.bold,
                       color: AppColors.expense,
@@ -210,7 +211,7 @@ class _TripCard extends StatelessWidget {
                       Icon(b.key.iconData, size: 14, color: b.key.colorValue),
                       const SizedBox(width: 4),
                       Text(
-                        '${b.key.name} ₹${b.value.toStringAsFixed(0)}',
+                        '${b.key.name} ${formatRupees(b.value)}',
                         style: AppTextStyles.bodySm,
                       ),
                     ],

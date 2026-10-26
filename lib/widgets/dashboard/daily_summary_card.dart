@@ -5,6 +5,7 @@ import '../app_card.dart';
 import '../../providers/expense_provider.dart';
 import '../../providers/workout_provider.dart';
 import '../animated/count_up_text.dart';
+import '../../utils/format.dart';
 
 class DailySummaryCard extends StatelessWidget {
   final ExpenseProvider expenseProvider;
@@ -86,11 +87,8 @@ class DailySummaryCard extends StatelessWidget {
           const SizedBox(height: 20),
           Row(
             children: [
-              _stat('Today', '₹${todaySpend.toStringAsFixed(0)}'),
-              _stat(
-                over ? 'Over budget' : 'Left',
-                '₹${balance.abs().toStringAsFixed(0)}',
-              ),
+              _stat('Today', formatRupees(todaySpend)),
+              _stat(over ? 'Over budget' : 'Left', formatRupees(balance.abs())),
               _stat(
                 'Workout',
                 latestWorkout == null

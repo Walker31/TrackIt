@@ -216,7 +216,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
           if (!mounted) return;
           AppSnackbar.success(
             this.context,
-            '₹${expense.amount.toStringAsFixed(0)} expense split '
+            '${formatRupees(expense.amount)} expense split '
             'between ${expense.splits.length} '
             '${expense.splits.length == 1 ? 'person' : 'people'}.',
           );
@@ -419,7 +419,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
           if (!mounted) return;
           AppSnackbar.success(
             this.context,
-            'Settlement of ₹${amount.toStringAsFixed(0)} recorded.',
+            'Settlement of ${formatRupees(amount)} recorded.',
           );
         },
       ),

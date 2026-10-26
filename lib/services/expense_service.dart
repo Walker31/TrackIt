@@ -64,19 +64,12 @@ class ExpenseService {
   Future<List<Expense>> getExpensesByMonth(int year, int month) async {
     final db = await _dbService.getDatabase();
     final startOfMonth = DateTime(year, month, 1).toIso8601String();
-    final endOfMonth = DateTime(
-      year,
-      month + 1,
-      0,
-      23,
-      59,
-      59,
-    ).toIso8601String();
+    final startOfNextMonth = DateTime(year, month + 1, 1).toIso8601String();
 
     final maps = await db.query(
       'expenses',
-      where: 'timestamp >= ? AND timestamp <= ?',
-      whereArgs: [startOfMonth, endOfMonth],
+      where: 'timestamp >= ? AND timestamp < ?',
+      whereArgs: [startOfMonth, startOfNextMonth],
       orderBy: 'timestamp DESC',
     );
     return maps.map((e) => Expense.fromMap(e)).toList();

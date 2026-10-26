@@ -9,6 +9,8 @@ import '../widgets/page_header.dart';
 import '../widgets/section_header.dart';
 import '../widgets/glass_container.dart';
 import '../providers/app_providers.dart';
+import '../providers/expense_provider.dart';
+import '../models/expenses.dart';
 import '../widgets/wallet/financial_analysis_card.dart';
 import '../widgets/wallet/transaction_list.dart';
 import '../widgets/wallet/add_expense_sheet.dart';
@@ -18,6 +20,7 @@ import '../widgets/wallet/budgets_card.dart';
 import '../widgets/wallet/create_group_sheet.dart';
 import '../widgets/animated/animated_segmented_tabs.dart';
 import '../widgets/animated/fade_slide_in.dart';
+import '../utils/format.dart';
 
 enum _WalletTab { personal, events, trips }
 
@@ -29,7 +32,6 @@ class WalletScreen extends ConsumerStatefulWidget {
 }
 
 class _WalletScreenState extends ConsumerState<WalletScreen> {
-  DateTime _selectedDate = DateTime.now();
   _WalletTab _tab = _WalletTab.personal;
   final ValueNotifier<int> _tripsRefresh = ValueNotifier(0);
 
@@ -93,7 +95,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                               SectionHeader(
                                 title: "Financial Analysis",
                                 subtitle: "Monthly Spending",
-                                action: _buildMonthSelector(),
+                                action: _buildMonthSelector(provider),
                               ),
                               const SizedBox(height: 24),
                               FadeSlideIn(
@@ -110,7 +112,10 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                                 subtitle: "History",
                               ),
                               const SizedBox(height: 16),
-                              TransactionList(provider: provider),
+                              TransactionList(
+                                provider: provider,
+                                onEdit: _showEditExpenseSheet,
+                              ),
                             ],
                           )
                         : _tab == _WalletTab.trips
@@ -179,35 +184,45 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     );
   }
 
-  Widget _buildMonthSelector() {
-    return GestureDetector(
-      onTap: () async {
-        final date = await showDatePicker(
-          context: context,
-          initialDate: _selectedDate,
-          firstDate: DateTime(2020),
-          lastDate: DateTime.now(),
-        );
-        if (date != null) {
-          setState(() => _selectedDate = date);
-        }
-      },
-      child: GlassContainer(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        borderRadius: 12,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              DateFormat('MMM yyyy').format(_selectedDate),
-              style: AppTextStyles.bodyMd.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
+  /// ‹ Oct 2026 › — steps through months; the future is never selectable.
+  Widget _buildMonthSelector(ExpenseProvider provider) {
+    final month = provider.selectedMonth;
+    final now = DateTime.now();
+    final isCurrent = month.year == now.year && month.month == now.month;
+
+    Widget arrow(IconData icon, String tooltip, DateTime? target) => IconButton(
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      onPressed: target == null ? null : () => provider.selectMonth(target),
+      icon: Icon(icon, size: 20),
+      color: AppColors.textPrimary,
+      disabledColor: AppColors.textTertiary.withValues(alpha: 0.4),
+    );
+
+    return GlassContainer(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      borderRadius: 12,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          arrow(
+            Icons.chevron_left_rounded,
+            'Previous month',
+            DateTime(month.year, month.month - 1),
+          ),
+          Text(
+            DateFormat('MMM yyyy').format(month),
+            style: AppTextStyles.bodyMd.copyWith(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w600,
             ),
-            Icon(Icons.arrow_drop_down, color: AppColors.textPrimary),
-          ],
-        ),
+          ),
+          arrow(
+            Icons.chevron_right_rounded,
+            'Next month',
+            isCurrent ? null : DateTime(month.year, month.month + 1),
+          ),
+        ],
       ),
     );
   }
@@ -234,7 +249,8 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
           await provider.addExpense(expense);
           if (!mounted) return;
           final label =
-              '₹${expense.amount.toStringAsFixed(0)} added to ${expense.category.displayName}.';
+              '${formatRupees(expense.amount)} added to '
+              '${provider.categoryOf(expense).name}.';
           if (provider.monthlySpent > provider.monthlyBudget) {
             AppSnackbar.warning(
               this.context,
@@ -244,6 +260,27 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
           } else {
             AppSnackbar.success(this.context, label, aboveNav: true);
           }
+        },
+      ),
+    );
+  }
+
+  void _showEditExpenseSheet(Expense expense) {
+    final provider = ref.read(expenseProviderProvider);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => AddExpenseSheet(
+        initial: expense,
+        onAdd: (updated) async {
+          await provider.updateExpense(updated);
+          if (!mounted) return;
+          AppSnackbar.success(
+            context,
+            '${updated.isIncome ? 'Income' : 'Expense'} updated.',
+            aboveNav: true,
+          );
         },
       ),
     );

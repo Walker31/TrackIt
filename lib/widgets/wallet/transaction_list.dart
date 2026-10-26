@@ -11,7 +11,10 @@ import '../ledger_row.dart';
 class TransactionList extends StatelessWidget {
   final ExpenseProvider provider;
 
-  const TransactionList({super.key, required this.provider});
+  /// Opens [expense] for editing.
+  final void Function(Expense expense)? onEdit;
+
+  const TransactionList({super.key, required this.provider, this.onEdit});
 
   Future<void> _confirmDelete(BuildContext context, int expenseId) async {
     final shouldDelete = await showDialog<bool>(
@@ -40,7 +43,7 @@ class TransactionList extends StatelessWidget {
     );
 
     if (shouldDelete == true && context.mounted) {
-      final match = provider.expenses.where((x) => x.id == expenseId);
+      final match = provider.monthExpenses.where((x) => x.id == expenseId);
       if (match.isNotEmpty) {
         await _deleteWithUndo(context, match.first);
       }
@@ -52,7 +55,7 @@ class TransactionList extends StatelessWidget {
     if (!context.mounted) return;
     AppSnackbar.info(
       context,
-      '₹${expense.amount.toStringAsFixed(0)} ${expense.isIncome ? 'income' : 'expense'} deleted.',
+      '${formatRupees(expense.amount)} ${expense.isIncome ? 'income' : 'expense'} deleted.',
       aboveNav: true,
       actionLabel: 'Undo',
       onAction: () => provider.addExpense(
@@ -74,9 +77,20 @@ class TransactionList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final expenses = provider.expenses;
+    final expenses = provider.monthExpenses;
     if (expenses.isEmpty) {
-      return const Center(child: Text("No transactions found"));
+      final month = DateFormat('MMMM').format(provider.selectedMonth);
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Center(
+          child: Text(
+            "No transactions in $month",
+            style: AppTextStyles.bodyMd.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+      );
     }
 
     // The list item's own context is gone once it is dismissed, so snackbars
@@ -102,18 +116,19 @@ class TransactionList extends StatelessWidget {
             ),
             child: LedgerRow(
               date: e.timestamp,
-              icon: e.category.icon,
-              iconColor: e.category.color,
-              title: e.description ?? e.category.displayName,
+              icon: provider.categoryOf(e).iconData,
+              iconColor: provider.categoryOf(e).colorValue,
+              title: e.description ?? provider.categoryOf(e).name,
               // Named entries keep their category visible.
               subtitle: [
-                if (e.description != null) e.category.displayName,
+                if (e.description != null) provider.categoryOf(e).name,
                 DateFormat('hh:mm a').format(e.timestamp),
                 if (e.paymentMethod != null) e.paymentMethod!.label,
               ].join(' · '),
               trailingLabel: e.isIncome ? 'you received' : 'you spent',
               trailingAmount: formatRupees(e.amount),
               trailingColor: e.isIncome ? AppColors.income : AppColors.outflow,
+              onTap: onEdit == null ? null : () => onEdit!(e),
               onLongPress: () {
                 final id = e.id;
                 if (id != null) _confirmDelete(context, id);
