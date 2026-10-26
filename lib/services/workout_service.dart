@@ -1,4 +1,5 @@
 import 'package:sqflite/sqflite.dart' show DatabaseExecutor;
+import 'api_service.dart';
 import 'database_service.dart';
 import 'sync_service.dart';
 import 'sync_outbox.dart';
@@ -252,6 +253,27 @@ class WorkoutService {
 
     _syncService.performSync();
     return routine.copyWith(id: localId);
+  }
+
+  /// Delete a routine (its exercises cascade).
+  Future<void> deleteRoutine(int id) async {
+    final db = await _dbService.getDatabase();
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'routines',
+        columns: ['remote_id'],
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (rows.isNotEmpty && rows.first['remote_id'] != null) {
+        await SyncOutbox.enqueueDelete(
+          txn,
+          '${ApiService.routinesPath}${rows.first['remote_id']}/',
+        );
+      }
+      await txn.delete('routines', where: 'id = ?', whereArgs: [id]);
+    });
+    _syncService.performSync();
   }
 
   /// Start a workout from a routine template

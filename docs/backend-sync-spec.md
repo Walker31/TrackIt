@@ -79,10 +79,23 @@ its queued deletes as success.
   task.
 - Pagination returns `next`/`results`; the app follows `next`.
 
-## 5. Open items
+## 5. Routines, budgets, group edits and deletes
 
-- Editing a synced workout: `WorkoutSerializer` nested exercises/sets need a
-  custom `update()` before the app can `PUT` workouts.
-- The backend already has `Routine`/`RoutineExercise` endpoints that the app
-  does not sync yet.
+Implemented in `E:\Django\trackit_backend` (needs `python manage.py migrate`:
+`finance 0005`, `fitness 0004`, `groups 0003`).
+
+- **Routines** (`/api/fitness/routines/`): `client_id`, `updated_at`,
+  `is_deleted`; `routine_exercises` are written nested on `POST`/`PUT` (a
+  `PUT` replaces them).
+- **Budgets** (`/api/budgets/`): `id` is the app's UUID. `POST` upserts by
+  `id`, or by category + month if another device already set that slot, and
+  answers with the row's id (the app adopts it). Soft-deleted.
+- **Groups, group expenses, settlements**: soft-deleted, and `PUT` updates
+  them (group expense `PUT` replaces splits). Only a group's owner may
+  delete it (403 otherwise). Balances ignore deleted rows, and a deleted
+  group's expenses/settlements drop out of their lists.
+
+## 6. Open items
+
 - Conflicts are last-write-wins on the server's `updated_at`.
+- Removing a member from a group isn't supported yet.

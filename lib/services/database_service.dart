@@ -315,6 +315,13 @@ class DatabaseService {
 
     // Why the server refused a group member (e.g. unknown username).
     await _ensureColumn(db, 'group_members', 'sync_error', 'TEXT');
+    // Budgets sync by their client-generated id; existing ones get pushed.
+    await _ensureColumn(
+      db,
+      'budgets',
+      'is_synced',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
     await _ensureColumn(db, 'expenses', 'remote_id', 'INTEGER');
     await _ensureColumn(
       db,

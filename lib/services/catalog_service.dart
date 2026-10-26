@@ -1,18 +1,28 @@
+import 'dart:math';
 import 'package:sqflite/sqflite.dart';
 import '../models/expenses.dart';
+import 'api_service.dart';
+import 'app_mode_service.dart';
 import 'database_service.dart';
+import 'sync_outbox.dart';
+import 'sync_service.dart';
 
 /// Local access to the blueprint's reference data: categories,
 /// subcategories, events and per-category monthly budgets.
 class CatalogService {
   final DatabaseService _dbService = DatabaseService();
 
+  static final _random = Random.secure();
+
+  /// Random RFC 4122 v4 id. These become server primary keys, so they must
+  /// not collide across devices or users.
   static String newId() {
-    // RFC 4122 v4-shaped id without an extra dependency.
-    final now = DateTime.now().microsecondsSinceEpoch;
-    final r = (now * 2654435761) & 0xFFFFFFFF;
-    String h(int v, int n) => v.toRadixString(16).padLeft(n, '0');
-    return '${h(now & 0xFFFFFFFF, 8)}-${h((now >> 32) & 0xFFFF, 4)}-4${h(r & 0xFFF, 3)}-a${h((r >> 12) & 0xFFF, 3)}-${h(now & 0xFFFFFFFFFFFF, 12)}';
+    final b = List<int>.generate(16, (_) => _random.nextInt(256));
+    b[6] = (b[6] & 0x0f) | 0x40; // version 4
+    b[8] = (b[8] & 0x3f) | 0x80; // RFC 4122 variant
+    final h = b.map((v) => v.toRadixString(16).padLeft(2, '0')).join();
+    return '${h.substring(0, 8)}-${h.substring(8, 12)}-'
+        '${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}';
   }
 
   Future<List<Category>> getCategories({TxnType? type}) async {
@@ -53,6 +63,7 @@ class CatalogService {
       type: type,
     );
     await db.insert('categories', category.toMap());
+    SyncService().performSync();
     return category;
   }
 
@@ -90,6 +101,7 @@ class CatalogService {
       description: description,
     );
     await db.insert('events', event.toMap());
+    SyncService().performSync();
     return event;
   }
 
@@ -132,11 +144,13 @@ class CatalogService {
       month: month,
       limitAmount: limitAmount,
     );
+    // Replacing resets is_synced to 0, so the next sync pushes it.
     await db.insert(
       'budgets',
       budget.toMap(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    SyncService().performSync();
   }
 
   /// Expense totals per category for an event.
@@ -166,7 +180,18 @@ class CatalogService {
 
   Future<void> deleteBudget(String budgetId) async {
     final db = await _dbService.getDatabase();
-    await db.delete('budgets', where: 'id = ?', whereArgs: [budgetId]);
+    await db.transaction((txn) async {
+      // The server may have it even if a later edit isn't pushed yet; a
+      // delete it doesn't know (404) is dropped from the queue.
+      if (AppModeService.isServer) {
+        await SyncOutbox.enqueueDelete(
+          txn,
+          '${ApiService.budgetsPath}$budgetId/',
+        );
+      }
+      await txn.delete('budgets', where: 'id = ?', whereArgs: [budgetId]);
+    });
+    SyncService().performSync();
   }
 
   /// Expense totals per category id for a calendar month.

@@ -109,6 +109,11 @@ class WorkoutProvider extends ChangeNotifier {
     await _reload();
   }
 
+  Future<void> deleteRoutine(int routineId) async {
+    await _service.deleteRoutine(routineId);
+    await _reload();
+  }
+
   Future<void> startWorkoutFromRoutine(Routine routine) async {
     _todayWorkout = await _service.startWorkoutFromRoutine(routine);
     notifyListeners();

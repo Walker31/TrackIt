@@ -78,6 +78,37 @@ class GroupProvider extends ChangeNotifier {
     await refreshGroups();
   }
 
+  Future<void> updateGroup(int groupId, {String? name, String? icon}) async {
+    await _service.updateGroup(groupId, name: name, icon: icon);
+    await refreshGroups();
+  }
+
+  Future<void> deleteGroup(int groupId) async {
+    await _service.deleteGroup(groupId);
+    await refreshGroups();
+  }
+
+  Future<void> updateGroupExpense(GroupExpense expense) async {
+    await _service.updateGroupExpense(expense);
+    await refreshGroups();
+  }
+
+  Future<void> deleteGroupExpense(int expenseId) async {
+    await _service.deleteGroupExpense(expenseId);
+    await refreshGroups();
+  }
+
+  Future<void> deleteSettlement(int settlementId) async {
+    await _service.deleteSettlement(settlementId);
+    await refreshGroups();
+  }
+
+  /// Whether the viewer owns [group] (only owners may delete it).
+  bool isOwner(Group group) => group.members.any(
+    (m) =>
+        m.role == 'owner' && m.username == (currentUsername ?? localUsername),
+  );
+
   Future<List<MemberBalance>> getBalances(int groupId) {
     return _service.getBalances(groupId);
   }

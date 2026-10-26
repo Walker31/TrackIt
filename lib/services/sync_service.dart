@@ -150,8 +150,10 @@ class SyncService {
       // Replay queued deletes first so the pulls below can't resurrect them.
       await SyncOutbox.drain(_apiService);
       await _syncCatalog(); // categories/events first: transactions reference them
+      await _syncBudgets();
       await _syncExpenses();
       await _syncWorkouts();
+      await _syncRoutines();
       await _syncGroups();
       await _syncGroupMembers();
       await _syncGroupExpenses();
@@ -355,6 +357,236 @@ class SyncService {
           row,
           conflictAlgorithm: ConflictAlgorithm.ignore,
         );
+      }
+    }
+  }
+
+  /// Sync per-category monthly budgets. Ids are generated on the device;
+  /// the server upserts by id or by category and month, and may answer
+  /// with the id another device already used for that slot.
+  Future<void> _syncBudgets() async {
+    final db = await _dbService.getDatabase();
+
+    for (final row in await db.query('budgets', where: 'is_synced = 0')) {
+      final localId = row['id'] as String;
+      try {
+        final response = await _apiService.post(
+          ApiService.budgetsPath,
+          data: {
+            'id': localId,
+            'category': row['category_id'],
+            'month': row['month'],
+            'limit_amount': row['limit_amount'],
+          },
+        );
+        final serverId = response.data['id']?.toString() ?? localId;
+        await db.transaction((txn) async {
+          if (serverId != localId) {
+            // Adopt the server's id for this category and month.
+            await txn.delete('budgets', where: 'id = ?', whereArgs: [serverId]);
+            await txn.update(
+              'budgets',
+              {'id': serverId},
+              where: 'id = ?',
+              whereArgs: [localId],
+            );
+          }
+          // Only if unchanged since the push; an edit made meanwhile
+          // stays dirty for the next sync.
+          await txn.update(
+            'budgets',
+            {'is_synced': 1},
+            where: 'id = ? AND limit_amount = ?',
+            whereArgs: [serverId, row['limit_amount']],
+          );
+        });
+      } catch (e) {
+        debugPrint('Failed to sync budget $localId: $e');
+      }
+    }
+
+    try {
+      final started = DateTime.now();
+      final remote = await _fetchAll(ApiService.budgetsPath, 'budgets');
+      await db.transaction((txn) async {
+        await mergeRemoteBudgets(txn, remote);
+        await _saveCursor(txn, 'budgets', started);
+      });
+    } catch (e) {
+      debugPrint('Failed to fetch budgets from remote: $e');
+    }
+  }
+
+  /// Merge pulled budgets. Unpushed local budgets win: their push will
+  /// update the server (or adopt its row for the same category and month).
+  @visibleForTesting
+  Future<void> mergeRemoteBudgets(
+    DatabaseExecutor db,
+    List<dynamic> remote,
+  ) async {
+    for (final data in remote) {
+      final id = data['id']?.toString();
+      final categoryId = (data['category'] ?? data['category_id'])?.toString();
+      final month = data['month']?.toString();
+      if (id == null || categoryId == null || month == null) continue;
+
+      if (_isTombstone(data)) {
+        await db.delete(
+          'budgets',
+          where: 'id = ? AND is_synced = 1',
+          whereArgs: [id],
+        );
+        continue;
+      }
+
+      final dirty = await db.query(
+        'budgets',
+        columns: ['id'],
+        where: 'is_synced = 0 AND (id = ? OR (category_id = ? AND month = ?))',
+        whereArgs: [id, categoryId, month],
+      );
+      if (dirty.isNotEmpty) continue;
+
+      final category = await db.query(
+        'categories',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [categoryId],
+      );
+      if (category.isEmpty) continue;
+
+      // Replacing also drops a synced row holding the same category and
+      // month under another id.
+      await db.insert('budgets', {
+        'id': id,
+        'category_id': categoryId,
+        'month': month,
+        'limit_amount': double.tryParse(data['limit_amount'].toString()) ?? 0,
+        'is_synced': 1,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+  }
+
+  /// Sync workout routines, sent whole (with their exercises) like workouts.
+  Future<void> _syncRoutines() async {
+    final db = await _dbService.getDatabase();
+
+    for (final map in await db.query('routines', where: 'is_synced = 0')) {
+      final routineId = map['id'] as int;
+      try {
+        final exercises = await db.query(
+          'routine_exercises',
+          where: 'routine_id = ?',
+          whereArgs: [routineId],
+          orderBy: 'id ASC',
+        );
+        final payload = {
+          'name': map['name'],
+          'type': map['type'],
+          'client_id': map['uuid'],
+          'routine_exercises': [
+            for (final e in exercises)
+              {
+                'name': e['name'],
+                'muscle_group': e['muscle_group'],
+                'sets_count': e['sets_count'],
+              },
+          ],
+        };
+        final existingRemoteId = map['remote_id'];
+        final response = existingRemoteId == null
+            ? await _apiService.post(ApiService.routinesPath, data: payload)
+            : await _apiService.put(
+                '${ApiService.routinesPath}$existingRemoteId/',
+                data: payload,
+              );
+        await db.update(
+          'routines',
+          {
+            'remote_id': response.data['id'] ?? existingRemoteId,
+            'is_synced': 1,
+          },
+          where: 'id = ?',
+          whereArgs: [routineId],
+        );
+      } catch (e) {
+        debugPrint('Failed to sync routine $routineId: $e');
+      }
+    }
+
+    try {
+      final started = DateTime.now();
+      final remote = await _fetchAll(ApiService.routinesPath, 'routines');
+      await db.transaction((txn) async {
+        await mergeRemoteRoutines(txn, remote);
+        await _saveCursor(txn, 'routines', started);
+      });
+    } catch (e) {
+      debugPrint('Failed to fetch routines from remote: $e');
+    }
+  }
+
+  /// Merge pulled routines: tombstones delete, synced local copies take the
+  /// server's version (exercises included), routines we pushed ourselves
+  /// are linked by client id, and the rest are inserted.
+  @visibleForTesting
+  Future<void> mergeRemoteRoutines(
+    DatabaseExecutor db,
+    List<dynamic> remote,
+  ) async {
+    for (final data in remote) {
+      final remoteId = data['id'];
+      if (remoteId == null) continue;
+
+      if (_isTombstone(data)) {
+        await db.delete(
+          'routines',
+          where: 'remote_id = ?',
+          whereArgs: [remoteId],
+        );
+        continue;
+      }
+
+      final existing = await db.query(
+        'routines',
+        columns: ['id', 'is_synced'],
+        where: 'remote_id = ?',
+        whereArgs: [remoteId],
+      );
+      if (existing.isEmpty && await _linkByClientId(db, 'routines', data)) {
+        continue;
+      }
+      if (existing.isNotEmpty && existing.first['is_synced'] != 1) continue;
+
+      final row = {'name': data['name'], 'type': data['type'], 'is_synced': 1};
+      final int localId;
+      if (existing.isNotEmpty) {
+        localId = existing.first['id'] as int;
+        await db.update('routines', row, where: 'id = ?', whereArgs: [localId]);
+        await db.delete(
+          'routine_exercises',
+          where: 'routine_id = ?',
+          whereArgs: [localId],
+        );
+      } else {
+        localId = await db.insert('routines', {
+          ...row,
+          'uuid': data['client_id'],
+          'remote_id': remoteId,
+        });
+      }
+
+      final exercises = data['routine_exercises'];
+      if (exercises is List) {
+        for (final e in exercises) {
+          if (e is! Map<String, dynamic>) continue;
+          await db.insert('routine_exercises', {
+            'routine_id': localId,
+            'name': e['name'],
+            'muscle_group': e['muscle_group'],
+            'sets_count': e['sets_count'],
+          });
+        }
       }
     }
   }
@@ -805,15 +1037,20 @@ class SyncService {
     final unsynced = await db.query('groups', where: 'is_synced = 0');
     for (var map in unsynced) {
       try {
-        final response = await _apiService.post(
-          'groups/groups/',
-          data: {
-            'name': map['name'],
-            'icon': map['icon'],
-            'client_id': map['uuid'],
-          },
-        );
-        final remoteId = response.data['id'];
+        // A group the server already has was renamed: update it in place.
+        final existingRemoteId = map['remote_id'];
+        final payload = {
+          'name': map['name'],
+          'icon': map['icon'],
+          'client_id': map['uuid'],
+        };
+        final response = existingRemoteId != null
+            ? await _apiService.put(
+                'groups/groups/$existingRemoteId/',
+                data: payload,
+              )
+            : await _apiService.post('groups/groups/', data: payload);
+        final remoteId = response.data['id'] ?? existingRemoteId;
         await db.update(
           'groups',
           {'remote_id': remoteId, 'is_synced': 1},
@@ -1120,25 +1357,33 @@ class SyncService {
       if (!allMembersSynced) continue;
 
       try {
-        final response = await _apiService.post(
-          'groups/group-expenses/',
-          data: {
-            'group': groupRemoteId,
-            'payer': payerRemoteId,
-            'amount': map['amount'],
-            'category': map['category'],
-            'description': map['description'],
-            'timestamp': map['timestamp'],
-            'receipt_url': map['receipt_url'],
-            'split_type': map['split_type'],
-            'client_id': map['uuid'],
-            'splits': splitPayload,
-          },
-        );
+        final payload = {
+          'group': groupRemoteId,
+          'payer': payerRemoteId,
+          'amount': map['amount'],
+          'category': map['category'],
+          'description': map['description'],
+          'timestamp': map['timestamp'],
+          'receipt_url': map['receipt_url'],
+          'split_type': map['split_type'],
+          'client_id': map['uuid'],
+          'splits': splitPayload,
+        };
+        // Edited after it was pushed: replace it (splits included).
+        final existingRemoteId = map['remote_id'];
+        final response = existingRemoteId != null
+            ? await _apiService.put(
+                'groups/group-expenses/$existingRemoteId/',
+                data: payload,
+              )
+            : await _apiService.post('groups/group-expenses/', data: payload);
 
         await db.update(
           'group_expenses',
-          {'remote_id': response.data['id'], 'is_synced': 1},
+          {
+            'remote_id': response.data['id'] ?? existingRemoteId,
+            'is_synced': 1,
+          },
           where: 'id = ?',
           whereArgs: [localExpenseId],
         );
@@ -1377,20 +1622,27 @@ class SyncService {
       }
 
       try {
-        final response = await _apiService.post(
-          'groups/settlements/',
-          data: {
-            'group': groupRemoteId,
-            'from_member': fromRemoteId,
-            'to_member': toRemoteId,
-            'amount': map['amount'],
-            'timestamp': map['timestamp'],
-            'client_id': map['uuid'],
-          },
-        );
+        final payload = {
+          'group': groupRemoteId,
+          'from_member': fromRemoteId,
+          'to_member': toRemoteId,
+          'amount': map['amount'],
+          'timestamp': map['timestamp'],
+          'client_id': map['uuid'],
+        };
+        final existingRemoteId = map['remote_id'];
+        final response = existingRemoteId != null
+            ? await _apiService.put(
+                'groups/settlements/$existingRemoteId/',
+                data: payload,
+              )
+            : await _apiService.post('groups/settlements/', data: payload);
         await db.update(
           'settlements',
-          {'remote_id': response.data['id'], 'is_synced': 1},
+          {
+            'remote_id': response.data['id'] ?? existingRemoteId,
+            'is_synced': 1,
+          },
           where: 'id = ?',
           whereArgs: [map['id']],
         );

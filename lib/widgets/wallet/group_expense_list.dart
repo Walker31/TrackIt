@@ -14,12 +14,18 @@ class GroupExpenseList extends StatelessWidget {
   /// The viewer's member id in this group, for "you lent / you borrowed".
   final int? currentMemberId;
 
+  /// Long-press actions (edit / delete).
+  final void Function(GroupExpense expense)? onExpenseLongPress;
+  final void Function(Settlement settlement)? onSettlementLongPress;
+
   const GroupExpenseList({
     super.key,
     required this.expenses,
     this.settlements = const [],
     required this.members,
     this.currentMemberId,
+    this.onExpenseLongPress,
+    this.onSettlementLongPress,
   });
 
   String _usernameFor(int memberId) {
@@ -68,6 +74,9 @@ class GroupExpenseList extends StatelessWidget {
               trailingLabel: label,
               trailingAmount: amount == null ? null : formatRupees(amount),
               trailingColor: color,
+              onLongPress: onExpenseLongPress == null
+                  ? null
+                  : () => onExpenseLongPress!(e),
             ),
           );
         },
@@ -101,6 +110,9 @@ class GroupExpenseList extends StatelessWidget {
         trailingLabel: label,
         trailingAmount: involved ? formatRupees(s.amount) : null,
         trailingColor: color,
+        onLongPress: onSettlementLongPress == null
+            ? null
+            : () => onSettlementLongPress!(s),
       ),
     );
   }

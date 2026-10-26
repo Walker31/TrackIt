@@ -12,11 +12,15 @@ class AddGroupExpenseSheet extends StatefulWidget {
   final int? defaultPayerMemberId;
   final Future<void> Function(GroupExpense expense) onAdd;
 
+  /// An existing expense to edit; null to add a new one.
+  final GroupExpense? initial;
+
   const AddGroupExpenseSheet({
     super.key,
     required this.group,
     required this.onAdd,
     this.defaultPayerMemberId,
+    this.initial,
   });
 
   @override
@@ -48,7 +52,35 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
     for (final m in widget.group.members) {
       _shareControllers[m.id!] = TextEditingController();
     }
+
+    final initial = widget.initial;
+    if (initial != null) {
+      _amountController.text = _trim(initial.amount);
+      _descController.text = initial.description ?? '';
+      _category = initial.category;
+      _splitType = initial.splitType;
+      _receiptUrl = initial.receiptUrl;
+      if (_includedMemberIds.contains(initial.payerMemberId)) {
+        _payerMemberId = initial.payerMemberId;
+      }
+      _includedMemberIds = {
+        for (final s in initial.splits)
+          if (_shareControllers.containsKey(s.memberId)) s.memberId,
+      };
+      for (final s in initial.splits) {
+        _shareControllers[s.memberId]?.text = switch (_splitType) {
+          SplitType.percentage when initial.amount > 0 => _trim(
+            s.shareAmount / initial.amount * 100,
+          ),
+          _ => _trim(s.shareAmount),
+        };
+      }
+    }
   }
+
+  /// 120.0 -> "120", 33.333 -> "33.33".
+  static String _trim(double v) =>
+      v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 
   @override
   void dispose() {
@@ -159,12 +191,14 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
 
     await widget.onAdd(
       GroupExpense(
+        id: widget.initial?.id,
+        remoteId: widget.initial?.remoteId,
         groupId: widget.group.id!,
         payerMemberId: _payerMemberId,
         amount: _amount,
         category: _category,
         description: _descController.text.isEmpty ? null : _descController.text,
-        timestamp: DateTime.now(),
+        timestamp: widget.initial?.timestamp ?? DateTime.now(),
         receiptUrl: _receiptUrl,
         splitType: _splitType,
         splits: splits,
@@ -192,7 +226,10 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text("Add Expense", style: AppTextStyles.h2),
+                Text(
+                  widget.initial == null ? "Add Expense" : "Edit Expense",
+                  style: AppTextStyles.h2,
+                ),
                 IconButton(
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close),

@@ -13,6 +13,8 @@ import '../widgets/wallet/balances_list.dart';
 import '../widgets/wallet/group_expense_list.dart';
 import '../widgets/animated/animated_segmented_tabs.dart';
 import '../widgets/app_snackbar.dart';
+import '../widgets/confirm_dialog.dart';
+import '../widgets/ledger_row.dart';
 
 class GroupDetailScreen extends ConsumerStatefulWidget {
   final int groupId;
@@ -91,6 +93,22 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
             icon: const Icon(Icons.person_add_alt_outlined),
             onPressed: () => _showAddMemberSheet(context),
           ),
+          PopupMenuButton<String>(
+            onSelected: (value) =>
+                value == 'edit' ? _editGroup(group) : _deleteGroup(group),
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'edit', child: Text('Edit event')),
+              // The server only lets the owner delete a group.
+              if (ref.read(groupProviderProvider).isOwner(group))
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Text(
+                    'Delete event',
+                    style: TextStyle(color: Colors.redAccent),
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
       body: _isLoading
@@ -138,6 +156,9 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                               settlements: _settlements,
                               members: group.members,
                               currentMemberId: myMemberId,
+                              onExpenseLongPress: (e) =>
+                                  _expenseActions(group, e, myMemberId),
+                              onSettlementLongPress: _deleteSettlement,
                             ),
                           )
                         : KeyedSubtree(
@@ -202,6 +223,156 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _editGroup(Group group) async {
+    final name = TextEditingController(text: group.name);
+    final icon = TextEditingController(text: group.icon);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit event'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: name,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Name'),
+            ),
+            TextField(
+              controller: icon,
+              decoration: const InputDecoration(labelText: 'Emoji'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    final newName = name.text.trim();
+    final newIcon = icon.text.trim();
+    name.dispose();
+    icon.dispose();
+    if (saved != true || newName.isEmpty) return;
+    await ref
+        .read(groupProviderProvider)
+        .updateGroup(
+          group.id!,
+          name: newName,
+          icon: newIcon.isEmpty ? null : newIcon,
+        );
+  }
+
+  Future<void> _deleteGroup(Group group) async {
+    final confirmed = await confirmDestructive(
+      context,
+      title: 'Delete event?',
+      message:
+          '"${group.name}" and all its expenses and payments will be '
+          'deleted for everyone in it.',
+    );
+    if (!confirmed || !mounted) return;
+    final provider = ref.read(groupProviderProvider);
+    // This screen is gone after the pop; the navigator's context isn't.
+    final navigator = Navigator.of(context);
+    navigator.pop();
+    AppSnackbar.info(navigator.context, '"${group.name}" deleted.');
+    await provider.deleteGroup(group.id!);
+  }
+
+  void _expenseActions(Group group, GroupExpense expense, int? myMemberId) {
+    showModalBottomSheet(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Edit expense'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _showEditExpenseSheet(group, expense, myMemberId);
+              },
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.delete_outline,
+                color: Colors.redAccent,
+              ),
+              title: const Text(
+                'Delete expense',
+                style: TextStyle(color: Colors.redAccent),
+              ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _deleteExpense(expense);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditExpenseSheet(
+    Group group,
+    GroupExpense expense,
+    int? myMemberId,
+  ) {
+    final provider = ref.read(groupProviderProvider);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => AddGroupExpenseSheet(
+        group: group,
+        initial: expense,
+        defaultPayerMemberId: myMemberId,
+        onAdd: (updated) async {
+          await provider.updateGroupExpense(updated);
+          await _load();
+          if (!mounted) return;
+          AppSnackbar.success(context, 'Expense updated.');
+        },
+      ),
+    );
+  }
+
+  Future<void> _deleteExpense(GroupExpense expense) async {
+    final confirmed = await confirmDestructive(
+      context,
+      title: 'Delete expense?',
+      message:
+          '${formatRupees(expense.amount)} '
+          '"${expense.description ?? expense.category.displayName}" '
+          'will be removed and balances updated.',
+    );
+    if (!confirmed) return;
+    await ref.read(groupProviderProvider).deleteGroupExpense(expense.id!);
+    await _load();
+  }
+
+  Future<void> _deleteSettlement(Settlement settlement) async {
+    final confirmed = await confirmDestructive(
+      context,
+      title: 'Delete payment?',
+      message:
+          'This ${formatRupees(settlement.amount)} payment will be removed '
+          'and balances updated.',
+    );
+    if (!confirmed) return;
+    await ref.read(groupProviderProvider).deleteSettlement(settlement.id!);
+    await _load();
   }
 
   void _showAddMemberSheet(BuildContext context) {
