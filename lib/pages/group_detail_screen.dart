@@ -175,22 +175,22 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          FloatingActionButton.extended(
+          FloatingActionButton(
             heroTag: 'settle_up',
             onPressed: myMemberId == null
                 ? null
                 : () => _showSettleUpSheet(context, group, myMemberId),
+            tooltip: 'Settle Up',
             backgroundColor: AppColors.income,
-            icon: const Icon(Icons.handshake_outlined),
-            label: const Text("Settle Up"),
+            child: const Icon(Icons.handshake_outlined),
           ),
           const SizedBox(height: 12),
-          FloatingActionButton.extended(
+          FloatingActionButton(
             heroTag: 'add_expense',
             onPressed: () => _showAddExpenseSheet(context, group, myMemberId),
+            tooltip: 'Add Expense',
             backgroundColor: AppColors.primary,
-            icon: const Icon(Icons.add),
-            label: const Text("Add Expense"),
+            child: const Icon(Icons.add),
           ),
         ],
       ),

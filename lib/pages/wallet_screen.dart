@@ -157,27 +157,27 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
           transitionBuilder: (child, animation) =>
               ScaleTransition(scale: animation, child: child),
           child: _tab == _WalletTab.personal
-              ? FloatingActionButton.extended(
+              ? FloatingActionButton(
                   key: const ValueKey('add_expense'),
                   onPressed: () => _showAddExpenseSheet(context),
+                  tooltip: 'Add Expense',
                   backgroundColor: AppColors.primary,
-                  icon: const Icon(Icons.add),
-                  label: const Text("Add Expense"),
+                  child: const Icon(Icons.add),
                 )
               : _tab == _WalletTab.trips
-              ? FloatingActionButton.extended(
+              ? FloatingActionButton(
                   key: const ValueKey('new_trip'),
                   onPressed: _createTrip,
+                  tooltip: 'New Trip',
                   backgroundColor: AppColors.primary,
-                  icon: const Icon(Icons.add),
-                  label: const Text("New Trip"),
+                  child: const Icon(Icons.add),
                 )
-              : FloatingActionButton.extended(
+              : FloatingActionButton(
                   key: const ValueKey('new_event'),
                   onPressed: () => _showCreateGroupSheet(context),
+                  tooltip: 'New Event',
                   backgroundColor: AppColors.primary,
-                  icon: const Icon(Icons.add),
-                  label: const Text("New Event"),
+                  child: const Icon(Icons.add),
                 ),
         ),
       ),
