@@ -16,19 +16,24 @@ class GroupService {
     final db = await _dbService.getDatabase();
     final now = DateTime.now();
 
-    final groupId = await db.insert('groups', {
-      'name': name,
-      'icon': icon,
-      'created_at': now.toIso8601String(),
-      'is_synced': 0,
-    });
+    // One transaction, so a sync can't push the group before its owner row
+    // exists (the server would then create a second owner).
+    final groupId = await db.transaction((txn) async {
+      final groupId = await txn.insert('groups', {
+        'name': name,
+        'icon': icon,
+        'created_at': now.toIso8601String(),
+        'is_synced': 0,
+      });
 
-    await db.insert('group_members', {
-      'group_id': groupId,
-      'user_id': currentUserId,
-      'username': currentUsername,
-      'role': 'owner',
-      'is_synced': 0,
+      await txn.insert('group_members', {
+        'group_id': groupId,
+        'user_id': currentUserId,
+        'username': currentUsername,
+        'role': 'owner',
+        'is_synced': 0,
+      });
+      return groupId;
     });
 
     _syncService.performSync();
@@ -120,15 +125,19 @@ class GroupService {
 
     final map = expense.toMap();
     map['is_synced'] = 0;
-    final expenseId = await db.insert('group_expenses', map);
-
-    for (final split in expense.splits) {
-      await db.insert('group_expense_splits', {
-        'expense_id': expenseId,
-        'member_id': split.memberId,
-        'share_amount': split.shareAmount,
-      });
-    }
+    // The expense and its splits land together: a sync running in between
+    // would otherwise push the expense with no splits.
+    final expenseId = await db.transaction((txn) async {
+      final expenseId = await txn.insert('group_expenses', map);
+      for (final split in expense.splits) {
+        await txn.insert('group_expense_splits', {
+          'expense_id': expenseId,
+          'member_id': split.memberId,
+          'share_amount': split.shareAmount,
+        });
+      }
+      return expenseId;
+    });
 
     _syncService.performSync();
 

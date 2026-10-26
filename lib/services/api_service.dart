@@ -24,6 +24,7 @@ class ApiService {
   static const String transactionsPath = 'transactions/';
   static const String categoriesPath = 'categories/';
   static const String eventsPath = 'events/';
+  static const String subcategoriesPath = 'subcategories/';
   static const String analyticsPath = 'analytics/';
 
   /// Tests: route every request (including token refreshes) through a fake.

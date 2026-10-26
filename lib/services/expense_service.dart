@@ -2,13 +2,11 @@ import 'database_service.dart';
 import 'api_service.dart';
 import 'sync_service.dart';
 import 'sync_outbox.dart';
-import 'app_mode_service.dart';
 import '../models/expenses.dart';
 import 'package:sqflite/sqflite.dart';
 
 class ExpenseService {
   final DatabaseService _dbService = DatabaseService();
-  final ApiService _apiService = ApiService();
   final SyncService _syncService = SyncService();
 
   /// Add a new expense (Offline-first)
@@ -19,30 +17,12 @@ class ExpenseService {
     final map = expense.toMap();
     map['is_synced'] = 0;
     final localId = await db.insert('expenses', map);
-    final savedExpense = expense.copyWith(id: localId);
 
-    // 2. Try to sync right away when connected to a server
-    if (AppModeService.isServer && await _syncService.isOnline()) {
-      try {
-        final response = await _apiService.post(
-          ApiService.transactionsPath,
-          data: expense.toApi(),
-        );
-        final remoteId = response.data['id'];
+    // 2. Push in the background. Only the sync runner pushes rows: a direct
+    // POST here could race a running sync and create a server duplicate.
+    _syncService.performSync();
 
-        await db.update(
-          'expenses',
-          {'remote_id': remoteId, 'is_synced': 1},
-          where: 'id = ?',
-          whereArgs: [localId],
-        );
-        return savedExpense.copyWith(id: localId);
-      } catch (e) {
-        // Stay unsynced, will be picked up by SyncService later
-      }
-    }
-
-    return savedExpense;
+    return expense.copyWith(id: localId);
   }
 
   /// Get all expenses (from local cache)
@@ -126,15 +106,21 @@ class ExpenseService {
 
   /// Get monthly total
   Future<double> getMonthlyTotal(int year, int month) async {
-    final expenses = await getExpensesByMonth(year, month);
-    return expenses
-        .where((e) => !e.isIncome)
-        .fold<double>(0.0, (sum, e) => sum + e.amount);
+    final db = await _dbService.getDatabase();
+    final rows = await db.rawQuery(
+      "SELECT COALESCE(SUM(amount), 0) AS total FROM expenses "
+      "WHERE type != 'income' AND timestamp >= ? AND timestamp < ?",
+      [
+        DateTime(year, month, 1).toIso8601String(),
+        DateTime(year, month + 1, 1).toIso8601String(),
+      ],
+    );
+    return (rows.first['total'] as num).toDouble();
   }
 
   /// Get last 7 days of expense totals (including today)
   Future<Map<DateTime, double>> getWeeklyExpenseData() async {
-    final expenses = await getAllExpenses();
+    final db = await _dbService.getDatabase();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final startDate = today.subtract(const Duration(days: 6));
@@ -143,14 +129,20 @@ class ExpenseService {
       for (int i = 0; i < 7; i++) startDate.add(Duration(days: i)): 0.0,
     };
 
-    for (final expense in expenses.where((e) => !e.isIncome)) {
-      final day = DateTime(
-        expense.timestamp.year,
-        expense.timestamp.month,
-        expense.timestamp.day,
-      );
-      if (day.isBefore(startDate) || day.isAfter(today)) continue;
-      weeklyData[day] = (weeklyData[day] ?? 0.0) + expense.amount;
+    // Timestamps are local ISO strings, so the first 10 chars are the day.
+    final rows = await db.rawQuery(
+      "SELECT substr(timestamp, 1, 10) AS day, SUM(amount) AS total "
+      "FROM expenses WHERE type != 'income' AND timestamp >= ? "
+      "AND timestamp < ? GROUP BY day",
+      [
+        startDate.toIso8601String(),
+        today.add(const Duration(days: 1)).toIso8601String(),
+      ],
+    );
+    for (final row in rows) {
+      final day = DateTime.tryParse(row['day'] as String);
+      if (day == null || !weeklyData.containsKey(day)) continue;
+      weeklyData[day] = (row['total'] as num).toDouble();
     }
 
     return weeklyData;
@@ -173,21 +165,24 @@ class ExpenseService {
   /// Delete an expense
   Future<void> deleteExpense(int id) async {
     final db = await _dbService.getDatabase();
-    final expense = await db.query(
-      'expenses',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
-
-    // Already on the server: queue the delete so it replays when online.
-    if (expense.isNotEmpty && expense.first['remote_id'] != null) {
-      await SyncOutbox.enqueueDelete(
-        db,
-        '${ApiService.transactionsPath}${expense.first['remote_id']}/',
+    await db.transaction((txn) async {
+      final expense = await txn.query(
+        'expenses',
+        where: 'id = ?',
+        whereArgs: [id],
       );
-    }
 
-    await db.delete('expenses', where: 'id = ?', whereArgs: [id]);
+      // Already on the server: queue the delete so it replays when online.
+      if (expense.isNotEmpty && expense.first['remote_id'] != null) {
+        await SyncOutbox.enqueueDelete(
+          txn,
+          '${ApiService.transactionsPath}${expense.first['remote_id']}/',
+        );
+      }
+
+      await txn.delete('expenses', where: 'id = ?', whereArgs: [id]);
+    });
+    _syncService.performSync();
   }
 
   Future<double> getMonthlyBudget() async {

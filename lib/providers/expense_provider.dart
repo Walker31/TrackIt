@@ -36,17 +36,19 @@ class ExpenseProvider extends ChangeNotifier {
     super.dispose();
   }
 
+  /// Show what's on the device straight away, then sync. Completes after
+  /// the sync (for pull-to-refresh); [onSyncComplete] reloads the result.
   Future<void> refreshData() async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      await SyncService().performSync();
       await _reload(notify: false);
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+    await SyncService().performSync();
   }
 
   /// Re-read today's and this month's figures from the local database.
@@ -64,8 +66,9 @@ class ExpenseProvider extends ChangeNotifier {
   }
 
   Future<void> addExpense(Expense expense) async {
+    // The service starts a background sync; don't make the UI wait for it.
     await _service.addExpense(expense);
-    await refreshData();
+    await _reload();
     HapticFeedback.lightImpact();
 
     // Budget Alert
@@ -81,12 +84,12 @@ class ExpenseProvider extends ChangeNotifier {
 
   Future<void> deleteExpense(int id) async {
     await _service.deleteExpense(id);
-    await refreshData();
+    await _reload();
   }
 
   Future<void> updateBudget(double amount) async {
     await _service.setMonthlyBudget(amount);
-    await refreshData();
+    await _reload();
   }
 
   Future<List<Expense>> getExpensesForDate(DateTime date) async {
