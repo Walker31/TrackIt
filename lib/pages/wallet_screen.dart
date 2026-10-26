@@ -55,7 +55,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                 20,
                 20,
                 20,
-                Responsive.pageBottomPadding(context),
+                Responsive.pageBottomPadding(context, hasFab: true),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

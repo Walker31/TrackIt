@@ -44,6 +44,9 @@ class GroupProvider extends ChangeNotifier {
     }
   }
 
+  Future<List<Settlement>> getSettlements(int groupId) =>
+      _service.getSettlements(groupId);
+
   Future<void> createGroup(String name, String icon) async {
     // Local mode has no account: the creator is just "Me" on this device.
     await _service.createGroup(

@@ -9,43 +9,79 @@ class AuthService {
   final ApiService _apiService = ApiService();
   final storage = const FlutterSecureStorage();
 
-  Future<bool> login(String username, String password) async {
+  /// Logs in and stores the tokens. Returns null on success, otherwise a
+  /// message saying what went wrong (wrong password vs. server unreachable).
+  Future<String?> login(String username, String password) async {
     try {
       final response = await _apiService.post(
         'auth/login/',
         data: {'username': username, 'password': password},
       );
-
-      if (response.statusCode == 200) {
-        final access = response.data['access'];
-        final refresh = response.data['refresh'];
-
-        await storage.write(key: 'access_token', value: access);
-        await storage.write(key: 'refresh_token', value: refresh);
-        await AppModeService().setMode(AppMode.server);
-        return true;
+      await storage.write(key: 'access_token', value: response.data['access']);
+      await storage.write(
+        key: 'refresh_token',
+        value: response.data['refresh'],
+      );
+      await AppModeService().setMode(AppMode.server);
+      return null;
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status == 400 || status == 401) {
+        return 'Incorrect username or password.';
       }
-      return false;
-    } catch (e) {
-      return false;
+      return _networkError(e);
+    } catch (_) {
+      return 'Something went wrong. Please try again.';
     }
   }
 
-  Future<bool> register(String username, String password, String email) async {
+  /// Creates the account, then logs in. Returns null on success, otherwise
+  /// the server's reason (e.g. username taken) or a connection message.
+  Future<String?> register(
+    String username,
+    String password,
+    String email,
+  ) async {
     try {
-      final response = await _apiService.post(
+      await _apiService.post(
         'auth/register/',
         data: {'username': username, 'password': password, 'email': email},
       );
-
-      if (response.statusCode == 201) {
-        // Automatically login after registration
-        return await login(username, password);
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 400) {
+        return _firstFieldError(e.response?.data) ??
+            'Registration failed. Check your details.';
       }
-      return false;
-    } catch (e) {
-      return false;
+      return _networkError(e);
+    } catch (_) {
+      return 'Something went wrong. Please try again.';
     }
+    return login(username, password);
+  }
+
+  /// No response at all means the server couldn't be reached; 5xx means it
+  /// failed. Neither is the user's fault, so say so.
+  static String _networkError(DioException e) {
+    final status = e.response?.statusCode;
+    if (status != null && status >= 500) {
+      return 'The server ran into a problem. Please try again shortly.';
+    }
+    if (status != null) {
+      return 'The server rejected the request ($status).';
+    }
+    return "Can't reach the server. Check your connection or the server "
+        'address in Server settings.';
+  }
+
+  /// DRF errors look like {"username": ["A user with that username..."]}.
+  static String? _firstFieldError(Object? data) {
+    if (data is Map) {
+      for (final value in data.values) {
+        if (value is List && value.isNotEmpty) return value.first.toString();
+        if (value is String) return value;
+      }
+    }
+    return null;
   }
 
   Future<void> logout() async {

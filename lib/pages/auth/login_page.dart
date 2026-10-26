@@ -38,7 +38,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       return;
     }
 
-    final success = await ref
+    final error = await ref
         .read(authProvider)
         .login(
           _usernameController.text.trim(),
@@ -46,14 +46,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         );
 
     if (mounted) {
-      if (success) {
+      if (error == null) {
         context.go('/home');
         AppSnackbar.success(context, 'Welcome back!', aboveNav: true);
       } else {
-        AppSnackbar.error(
-          context,
-          'Login failed. Please check your credentials.',
-        );
+        AppSnackbar.error(context, error);
       }
     }
   }

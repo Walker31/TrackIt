@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../services/api_service.dart';
 import '../services/app_mode_service.dart';
 import '../services/auth_service.dart';
 
@@ -36,8 +38,26 @@ class AuthNotifier extends ChangeNotifier {
 
   AuthState get state => _state;
 
+  StreamSubscription<void>? _expirySub;
+
   AuthNotifier(this._authService) {
+    // Any request can discover the refresh token was rejected; that (and
+    // only that) ends the session. Expired access tokens renew silently.
+    _expirySub = ApiService.onSessionExpired.listen((_) => _endSession());
     checkAuthStatus();
+  }
+
+  @override
+  void dispose() {
+    _expirySub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _endSession() async {
+    if (_state.status != AuthStatus.authenticated) return;
+    await _authService.logout();
+    _state = AuthState(status: AuthStatus.unauthenticated);
+    notifyListeners();
   }
 
   Future<void> checkAuthStatus() async {
@@ -91,33 +111,19 @@ class AuthNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> login(String username, String password) async {
-    _state = _state.copyWith(isLoading: true);
-    notifyListeners();
-    final success = await _authService.login(username, password);
-    if (success) {
-      final user = await _authService.getUserProfile();
-      _state = _state.copyWith(
-        status: AuthStatus.authenticated,
-        user: user,
-        isLoading: false,
-      );
-    } else {
-      _state = _state.copyWith(
-        status: AuthStatus.unauthenticated,
-        user: null,
-        isLoading: false,
-      );
-    }
-    notifyListeners();
-    return success;
-  }
+  /// Returns null on success, otherwise a message for the user.
+  Future<String?> login(String username, String password) =>
+      _signIn(() => _authService.login(username, password));
 
-  Future<bool> register(String username, String password, String email) async {
+  /// Returns null on success, otherwise a message for the user.
+  Future<String?> register(String username, String password, String email) =>
+      _signIn(() => _authService.register(username, password, email));
+
+  Future<String?> _signIn(Future<String?> Function() attempt) async {
     _state = _state.copyWith(isLoading: true);
     notifyListeners();
-    final success = await _authService.register(username, password, email);
-    if (success) {
+    final error = await attempt();
+    if (error == null) {
       final user = await _authService.getUserProfile();
       _state = _state.copyWith(
         status: AuthStatus.authenticated,
@@ -125,14 +131,12 @@ class AuthNotifier extends ChangeNotifier {
         isLoading: false,
       );
     } else {
-      _state = _state.copyWith(
-        status: AuthStatus.unauthenticated,
-        user: null,
-        isLoading: false,
-      );
+      // Keep the previous status: a failed attempt from local mode must
+      // not kick the user out of the data they were already using.
+      _state = _state.copyWith(isLoading: false);
     }
     notifyListeners();
-    return success;
+    return error;
   }
 
   Future<void> logout() async {

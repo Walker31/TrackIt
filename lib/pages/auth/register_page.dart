@@ -43,7 +43,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       return;
     }
 
-    final success = await ref
+    final error = await ref
         .read(authProvider)
         .register(
           _usernameController.text.trim(),
@@ -52,7 +52,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
         );
 
     if (mounted) {
-      if (success) {
+      if (error == null) {
         context.go('/home');
         AppSnackbar.success(
           context,
@@ -60,10 +60,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           aboveNav: true,
         );
       } else {
-        AppSnackbar.error(
-          context,
-          'Registration failed. Username may already be taken.',
-        );
+        AppSnackbar.error(context, error);
       }
     }
   }

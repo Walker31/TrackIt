@@ -9,7 +9,11 @@ import 'package:trackit/providers/auth_provider.dart';
 import 'package:trackit/theme/app_transitions.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authNotifier = ref.watch(authProvider);
+  // read, not watch: watching a ChangeNotifierProvider rebuilds on every
+  // notify (even an isLoading toggle), which created a fresh GoRouter and
+  // wiped the navigation stack and page state. refreshListenable below
+  // re-runs the redirects instead.
+  final authNotifier = ref.read(authProvider);
 
   return GoRouter(
     initialLocation: '/',

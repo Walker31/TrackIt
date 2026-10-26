@@ -29,9 +29,12 @@ class Responsive {
   static double navInset(BuildContext context) =>
       WindowSize.of(context).usesBottomNav ? 90 : 0;
 
-  /// Bottom padding for a tab page's scroll content.
-  static double pageBottomPadding(BuildContext context) =>
-      navInset(context) + 30;
+  /// Bottom padding for a tab page's scroll content. Pages with a floating
+  /// action button pass [hasFab] so their last item can scroll clear of it.
+  static double pageBottomPadding(
+    BuildContext context, {
+    bool hasFab = false,
+  }) => navInset(context) + (hasFab ? 96 : 30);
 
   /// Side padding that centres a full-width scroll view's content at
   /// [maxWidth], so it still scrolls from anywhere in the window.

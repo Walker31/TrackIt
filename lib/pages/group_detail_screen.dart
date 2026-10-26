@@ -27,6 +27,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
   int _tabIndex = 0;
   List<GroupExpense> _expenses = [];
   List<MemberBalance> _balances = [];
+  List<Settlement> _settlements = [];
   bool _isLoading = true;
 
   @override
@@ -40,10 +41,12 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     setState(() => _isLoading = true);
     final expenses = await provider.getGroupExpenses(widget.groupId);
     final balances = await provider.getBalances(widget.groupId);
+    final settlements = await provider.getSettlements(widget.groupId);
     if (!mounted) return;
     setState(() {
       _expenses = expenses;
       _balances = balances;
+      _settlements = settlements;
       _isLoading = false;
     });
   }
@@ -99,7 +102,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                   Responsive.centeringPadding(context),
                   8,
                   Responsive.centeringPadding(context),
-                  120,
+                  // Clear the two stacked FABs (Settle Up, Add Expense).
+                  170,
                 ),
                 children: [
                   _RejectedMembersBanner(
@@ -131,6 +135,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                             key: const ValueKey('expenses'),
                             child: GroupExpenseList(
                               expenses: _expenses,
+                              settlements: _settlements,
                               members: group.members,
                               currentMemberId: myMemberId,
                             ),

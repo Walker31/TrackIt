@@ -160,7 +160,6 @@ class SyncService {
       await _syncGroupMembers();
       await _syncGroupExpenses();
       await _syncSettlements();
-      await _cleanupOldSyncedData(); // Keep local cache small
       debugPrint('Sync Completed successfully.');
     } catch (e) {
       debugPrint('Sync Failed: $e');
@@ -1198,28 +1197,5 @@ class SyncService {
     } catch (e) {
       debugPrint('Failed to fetch settlements from remote: $e');
     }
-  }
-
-  /// Cleanup synced data older than 30 days to keep the local cache small
-  Future<void> _cleanupOldSyncedData() async {
-    final db = await _dbService.getDatabase();
-    final cutoff = DateTime.now()
-        .subtract(const Duration(days: 30))
-        .toIso8601String();
-
-    // Only delete data that HAS been synced to the server
-    await db.delete(
-      'expenses',
-      where: 'is_synced = 1 AND timestamp < ?',
-      whereArgs: [cutoff],
-    );
-    await db.delete(
-      'workouts',
-      where: 'is_synced = 1 AND timestamp < ?',
-      whereArgs: [cutoff],
-    );
-    // Exercises and sets will be deleted automatically due to CASCADE in workouts
-
-    debugPrint('Local cache cleaned up. Records older than 30 days removed.');
   }
 }

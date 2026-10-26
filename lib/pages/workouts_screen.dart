@@ -67,7 +67,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                     20,
                     20,
                     20,
-                    Responsive.pageBottomPadding(context),
+                    Responsive.pageBottomPadding(context, hasFab: true),
                   ),
                   child: ResponsiveColumns(
                     gap: 40,
