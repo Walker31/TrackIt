@@ -55,11 +55,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     }
   }
 
-  Future<void> _useLocalMode() async {
-    await ref.read(authProvider).useLocalMode();
-    if (mounted) context.go('/home');
-  }
-
   Future<void> _editServerUrl() async {
     final controller = TextEditingController(text: ApiService.baseUrl);
     final saved = await showDialog<String>(
@@ -100,6 +95,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     return AuthScaffold(
       title: 'Welcome back',
       subtitle: 'Log in to sync your data across devices.',
+      // Pushed from the welcome screen or Settings.
+      showBack: context.canPop(),
       form: AutofillGroup(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -132,10 +129,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               isLoading: authState.isLoading,
               onPressed: _handleLogin,
             ),
-            const SizedBox(height: 24),
-            const _OrDivider(),
-            const SizedBox(height: 24),
-            _LocalModeOption(onTap: authState.isLoading ? null : _useLocalMode),
           ],
         ),
       ),
@@ -152,7 +145,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 ),
               ),
               TextButton(
-                onPressed: () => context.push('/register'),
+                // Swap pages so back always returns to where login opened.
+                onPressed: () => context.pushReplacement('/register'),
                 child: Text(
                   'Create an account',
                   style: AppTextStyles.bodyMd.copyWith(
@@ -188,91 +182,6 @@ class _VisibilityToggle extends StatelessWidget {
           key: ValueKey(obscured),
           size: 20,
           color: AppColors.textTertiary,
-        ),
-      ),
-    );
-  }
-}
-
-class _OrDivider extends StatelessWidget {
-  const _OrDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    final line = Expanded(
-      child: Divider(color: AppColors.textTertiary.withValues(alpha: 0.25)),
-    );
-    return Row(
-      children: [
-        line,
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Text(
-            'or',
-            style: AppTextStyles.bodySm.copyWith(color: AppColors.textTertiary),
-          ),
-        ),
-        line,
-      ],
-    );
-  }
-}
-
-/// "Use without an account" as a tappable card that explains the trade-off.
-class _LocalModeOption extends StatelessWidget {
-  final VoidCallback? onTap;
-  const _LocalModeOption({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return TapScale(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: AppColors.textTertiary.withValues(alpha: 0.25),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.secondary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(
-                Icons.phone_android_rounded,
-                color: AppColors.secondary,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Continue without an account',
-                    style: AppTextStyles.bodyMd.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Everything stays on this device. You can connect later.',
-                    style: AppTextStyles.bodySm.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
-          ],
         ),
       ),
     );

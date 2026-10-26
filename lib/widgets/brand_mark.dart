@@ -16,7 +16,7 @@ class BrandMark extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        gradient: onGradient ? null : AppColors.primaryGradient,
+        gradient: onGradient ? null : AppColors.brandGradient,
         color: onGradient ? Colors.white.withValues(alpha: 0.16) : null,
         borderRadius: BorderRadius.circular(size * 0.3),
         border: onGradient

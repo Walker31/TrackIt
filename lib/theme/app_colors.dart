@@ -17,21 +17,29 @@ class AppColors {
 
   static bool get isDark => _isDark;
 
-  /// Brand indigo for filled surfaces (buttons, FABs) that carry white
-  /// content. Identical in both themes.
+  /// Brand indigo for filled surfaces (buttons, FABs) in the light theme.
   static const Color brand = Color(0xFF4F46E5);
 
-  /// Indigo for text, icons and accents drawn on the page background. Dark
-  /// mode lifts it so it stays readable on the dark surfaces.
-  static Color get primary => _isDark ? brandLight : brand;
-  static const Color brandLight = Color(0xFF8B8CFA);
+  /// Dark theme follows Splitwise: neutral charcoal surfaces with a teal
+  /// accent, mint for money coming in and orange for money going out.
+  static const Color darkAccent = Color(0xFF1CC29F);
+  static const Color darkAccentFill = Color(0xFF12A383);
+  static const Color darkIncome = Color(0xFF5BC5A7);
+  static const Color darkOutflow = Color(0xFFFF652F);
 
-  static const Color secondary = Color(0xFF059669); // Emerald
+  /// Accent for text, icons and outlines drawn on the page background.
+  static Color get primary => _isDark ? darkAccent : brand;
+
+  /// Fill for buttons and FABs that carry white content.
+  static Color get fill => _isDark ? darkAccentFill : brand;
+
+  static Color get secondary => _isDark ? darkIncome : _emerald;
   static const Color accent = Color(0xFFD97706); // Amber
   static const Color expense = Color(0xFFE11D48); // Rose
-  static const Color income = Color(0xFF059669); // Emerald
+  static Color get income => _isDark ? darkIncome : _emerald;
   // Splitwise-style "money out / you owe" orange for ledger rows.
-  static const Color outflow = Color(0xFFE8590C);
+  static Color get outflow => _isDark ? darkOutflow : const Color(0xFFE8590C);
+  static const Color _emerald = Color(0xFF059669);
   static const Color workout = Color(0xFF7C3AED); // Violet
 
   // Light surfaces/text (also used directly by AppTheme.lightTheme)
@@ -43,12 +51,12 @@ class AppColors {
   static const Color lightTextTertiary = Color(0xFF9CA3AF);
 
   // Dark surfaces/text (also used directly by AppTheme.darkTheme)
-  static const Color darkBackground = Color(0xFF0B0F1A);
-  static const Color darkSurface = Color(0xFF171C2A);
-  static const Color darkSurfaceVariant = Color(0xFF232A3D);
-  static const Color darkTextPrimary = Color(0xFFF3F5F9);
-  static const Color darkTextSecondary = Color(0xFF9AA4B8);
-  static const Color darkTextTertiary = Color(0xFF6B7688);
+  static const Color darkBackground = Color(0xFF1B1B1D);
+  static const Color darkSurface = Color(0xFF262628);
+  static const Color darkSurfaceVariant = Color(0xFF323235);
+  static const Color darkTextPrimary = Color(0xFFF2F2F3);
+  static const Color darkTextSecondary = Color(0xFFA9A9AE);
+  static const Color darkTextTertiary = Color(0xFF7A7A80);
 
   static Color get background => _isDark ? darkBackground : lightBackground;
   static Color get surface => _isDark ? darkSurface : lightSurface;
@@ -66,6 +74,16 @@ class AppColors {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
+
+  /// Splitwise-style teal used for the logo tile in the dark theme.
+  static const LinearGradient darkGradient = LinearGradient(
+    colors: [Color(0xFF1CC29F), Color(0xFF0E8C73)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static LinearGradient get brandGradient =>
+      _isDark ? darkGradient : primaryGradient;
 
   /// Money-green launch gradient (splash; mirrored in web/index.html).
   static const LinearGradient splashGradient = LinearGradient(

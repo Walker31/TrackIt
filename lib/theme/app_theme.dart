@@ -28,7 +28,8 @@ class AppTheme {
   static ThemeData _build(Brightness brightness) {
     final dark = brightness == Brightness.dark;
     // Accent for text and outlines; fills keep the brand indigo.
-    final primary = dark ? AppColors.brandLight : AppColors.brand;
+    final primary = dark ? AppColors.darkAccent : AppColors.brand;
+    final fill = dark ? AppColors.darkAccentFill : AppColors.brand;
     final background = dark
         ? AppColors.darkBackground
         : AppColors.lightBackground;
@@ -60,11 +61,11 @@ class AppTheme {
       primaryColor: primary,
       scaffoldBackgroundColor: background,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: AppColors.brand,
+        seedColor: fill,
         brightness: brightness,
         primary: primary,
-        onPrimary: dark ? const Color(0xFF14123D) : Colors.white,
-        secondary: AppColors.secondary,
+        onPrimary: dark ? const Color(0xFF06231C) : Colors.white,
+        secondary: dark ? AppColors.darkIncome : AppColors.secondary,
         surface: surface,
         onSurface: textPrimary,
         onSurfaceVariant: textSecondary,
@@ -101,15 +102,15 @@ class AppTheme {
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: AppColors.brand,
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: fill,
         foregroundColor: Colors.white,
         elevation: 2,
         highlightElevation: 4,
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: AppColors.brand,
+          backgroundColor: fill,
           foregroundColor: Colors.white,
           shape: controlShape,
           padding: buttonPadding,
@@ -118,7 +119,7 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.brand,
+          backgroundColor: fill,
           foregroundColor: Colors.white,
           elevation: 0,
           shape: controlShape,

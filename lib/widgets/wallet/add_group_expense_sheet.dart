@@ -229,7 +229,7 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  widget.initial == null ? "Add Expense" : "Edit Expense",
+                  widget.initial == null ? "Add expense" : "Edit expense",
                   style: AppTextStyles.h2,
                 ),
                 IconButton(
@@ -334,9 +334,10 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
             ],
             const SizedBox(height: 24),
             AppButton(
-              text: _isSaving ? "Saving..." : "Save Expense",
+              text: widget.initial == null ? "Save expense" : "Save changes",
+              isLoading: _isSaving,
               color: AppColors.expense,
-              onPressed: _isSaving ? () {} : _save,
+              onPressed: _save,
             ),
           ],
         ),
@@ -410,7 +411,8 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
                 textAlign: TextAlign.right,
                 decoration: InputDecoration(
                   isDense: true,
-                  suffixText: _splitType == SplitType.percentage ? "%" : "₹",
+                  prefixText: _splitType == SplitType.percentage ? null : "₹",
+                  suffixText: _splitType == SplitType.percentage ? "%" : null,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide.none,

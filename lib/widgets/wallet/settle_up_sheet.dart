@@ -280,7 +280,7 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
                         color: AppColors.textTertiary.withValues(alpha: 0.5),
                       ),
                     ),
-                    focusedBorder: const UnderlineInputBorder(
+                    focusedBorder: UnderlineInputBorder(
                       borderSide: BorderSide(color: AppColors.income, width: 2),
                     ),
                   ),
@@ -372,8 +372,8 @@ class _FlowSummary extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 avatar(from),
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 20),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 20),
                   child: Icon(
                     Icons.arrow_forward_rounded,
                     color: AppColors.income,

@@ -55,10 +55,10 @@ class ExerciseGrid extends StatelessWidget {
               width: 132,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                color: isSelected ? AppColors.brand : AppColors.surface,
+                color: isSelected ? AppColors.fill : AppColors.surface,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: isSelected ? AppColors.brand : hairline,
+                  color: isSelected ? AppColors.fill : hairline,
                 ),
               ),
               child: Column(

@@ -25,7 +25,7 @@ class AppButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = color ?? AppColors.brand;
+    final accent = color ?? AppColors.fill;
     final contentColor = isPrimary ? Colors.white : AppColors.textPrimary;
     final enabled = onPressed != null && !isLoading;
     final isDark = AppColors.isDark;

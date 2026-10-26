@@ -188,7 +188,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
             ),
           ),
           TextButton(
-            onPressed: () => context.pop(),
+            onPressed: () => context.pushReplacement('/login'),
             child: Text(
               'Log in',
               style: AppTextStyles.bodyMd.copyWith(

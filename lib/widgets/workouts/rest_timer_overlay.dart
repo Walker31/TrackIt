@@ -18,7 +18,7 @@ class RestTimerOverlay extends StatelessWidget {
       opacity: 0.9,
       child: Row(
         children: [
-          const Icon(Icons.timer_outlined, color: AppColors.secondary),
+          Icon(Icons.timer_outlined, color: AppColors.secondary),
           const SizedBox(width: 12),
           Text(
             "REST TIMER",

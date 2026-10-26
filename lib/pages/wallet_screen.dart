@@ -142,20 +142,20 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
               ? FloatingActionButton(
                   key: const ValueKey('add_expense'),
                   onPressed: () => _showAddExpenseSheet(context),
-                  tooltip: 'Add Expense',
+                  tooltip: 'Add expense',
                   child: const Icon(Icons.add),
                 )
               : _tab == _WalletTab.trips
               ? FloatingActionButton(
                   key: const ValueKey('new_trip'),
                   onPressed: _createTrip,
-                  tooltip: 'New Trip',
+                  tooltip: 'New trip',
                   child: const Icon(Icons.add),
                 )
               : FloatingActionButton(
                   key: const ValueKey('new_event'),
                   onPressed: () => _showCreateGroupSheet(context),
-                  tooltip: 'New Event',
+                  tooltip: 'New event',
                   child: const Icon(Icons.add),
                 ),
         ),

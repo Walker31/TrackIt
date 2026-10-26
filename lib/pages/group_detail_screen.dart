@@ -189,7 +189,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
             onPressed: myMemberId == null
                 ? null
                 : () => _showSettleUpSheet(context, group, myMemberId),
-            tooltip: 'Settle Up',
+            tooltip: 'Settle up',
             backgroundColor: AppColors.income,
             child: const Icon(Icons.handshake_outlined),
           ),
@@ -197,7 +197,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
           FloatingActionButton(
             heroTag: 'add_expense',
             onPressed: () => _showAddExpenseSheet(context, group, myMemberId),
-            tooltip: 'Add Expense',
+            tooltip: 'Add expense',
             child: const Icon(Icons.add),
           ),
         ],

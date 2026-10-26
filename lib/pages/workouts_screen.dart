@@ -144,7 +144,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
         padding: EdgeInsets.only(bottom: Responsive.navInset(context)),
         child: FloatingActionButton(
           onPressed: () => _showAddExerciseSheet(context),
-          tooltip: 'Add Exercise',
+          tooltip: 'Add exercise',
           child: const Icon(Icons.add),
         ),
       ),
@@ -302,7 +302,7 @@ class _CreateRoutineSheetState extends State<_CreateRoutineSheet> {
             ),
           ),
           const SizedBox(height: 24),
-          Text("Workout Type", style: AppTextStyles.fieldLabel),
+          Text("Workout type", style: AppTextStyles.fieldLabel),
           const SizedBox(height: 12),
           Row(
             children: WorkoutType.values.map((type) {

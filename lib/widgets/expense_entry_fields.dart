@@ -4,7 +4,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import 'animated/tap_scale.dart';
 
-/// The description + amount pair at the top of the add-expense sheets,
+/// The amount + description pair at the top of the add-expense sheets,
 /// laid out like Splitwise: a square tile on the left (category icon /
 /// currency) and an underlined field beside it.
 class ExpenseEntryFields extends StatelessWidget {
@@ -53,30 +53,10 @@ class ExpenseEntryFields extends StatelessWidget {
       );
     }
 
+    // Amount first: it's the one thing every entry needs, and the field
+    // that has focus when the sheet opens.
     return Column(
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            categoryTile,
-            const SizedBox(width: 16),
-            Expanded(
-              child: TextField(
-                controller: descriptionController,
-                autofocus: autofocus,
-                textCapitalization: TextCapitalization.sentences,
-                textInputAction: TextInputAction.next,
-                maxLength: 80,
-                style: AppTextStyles.bodyLg.copyWith(fontSize: 18),
-                decoration: _underline(
-                  hint: 'Enter a description',
-                  accent: AppColors.primary,
-                ).copyWith(counterText: ''),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -95,10 +75,11 @@ class ExpenseEntryFields extends StatelessWidget {
               child: TextField(
                 controller: amountController,
                 onChanged: onAmountChanged,
+                autofocus: autofocus,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                textInputAction: TextInputAction.done,
+                textInputAction: TextInputAction.next,
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(
                     RegExp(r'^\d{0,9}(\.\d{0,2})?'),
@@ -113,6 +94,27 @@ class ExpenseEntryFields extends StatelessWidget {
                     AppColors.textTertiary.withValues(alpha: 0.6),
                   ),
                 ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            categoryTile,
+            const SizedBox(width: 16),
+            Expanded(
+              child: TextField(
+                controller: descriptionController,
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.done,
+                maxLength: 80,
+                style: AppTextStyles.bodyLg.copyWith(fontSize: 18),
+                decoration: _underline(
+                  hint: 'What was it for? (optional)',
+                  accent: AppColors.primary,
+                ).copyWith(counterText: ''),
               ),
             ),
           ],
