@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 6–11 Auto Backup: keep the SQLite database (all transactions,
+     workouts, budgets, settings) so a reinstall or a new phone restores it.
+     Secure-storage prefs hold device-bound encrypted tokens that can't be
+     decrypted after a restore, so they stay out. -->
+<full-backup-content>
+    <include domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+</full-backup-content>

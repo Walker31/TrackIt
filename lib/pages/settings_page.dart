@@ -50,7 +50,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             budget > 0 ? formatRupees(budget) : 'Not set',
             style: AppTextStyles.bodyMd.copyWith(
               fontWeight: FontWeight.w600,
-              color: budget > 0 ? AppColors.textPrimary : AppColors.textTertiary,
+              color: budget > 0
+                  ? AppColors.textPrimary
+                  : AppColors.textTertiary,
             ),
           ),
           onTap: () => _editBudget(budget),
@@ -58,7 +60,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ]),
       _section('Data & sync', [
         _SettingsTile(
-          icon: isLocal ? Icons.phone_android_rounded : Icons.cloud_done_outlined,
+          icon: isLocal
+              ? Icons.phone_android_rounded
+              : Icons.cloud_done_outlined,
           iconColor: isLocal ? AppColors.textSecondary : AppColors.income,
           title: isLocal ? 'Stored on this device' : 'Synced with your server',
           subtitle: isLocal
@@ -70,7 +74,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _SettingsTile(
             icon: Icons.cloud_outlined,
             title: 'Connect to a server',
-            subtitle: 'Back up and sync across devices',
+            subtitle: 'Back up, sync and split costs with friends',
             accent: true,
             onTap: () => context.push('/login'),
           )
@@ -386,10 +390,7 @@ class _SettingsTile extends StatelessWidget {
             if (trailing != null) ...[const SizedBox(width: 12), trailing!],
             if (showChevron && onTap != null) ...[
               const SizedBox(width: 4),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.textTertiary,
-              ),
+              Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
             ],
           ],
         ),

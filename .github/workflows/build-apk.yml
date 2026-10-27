@@ -34,9 +34,31 @@ jobs:
 
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
-      # Signed with the debug key (see android/app/build.gradle.kts), so the APK
-      # is directly installable for testing.
-      - run: flutter build apk --release
+      # Every APK must carry the same signature, or Android rejects it as an
+      # update and the only way past is uninstalling, which deletes the
+      # user's data. The keystore lives in repository secrets; without them
+      # the build falls back to a throwaway debug key and says so.
+      - name: Set up release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::No release keystore secret; this APK is signed with a one-off debug key and cannot update an existing install."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF2
+          storeFile=upload-keystore.jks
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF2
+
+      # The run number is the versionCode, so each build is a newer version.
+      - run: flutter build apk --release --build-number=${{ github.run_number }}
 
       - uses: actions/upload-artifact@v4
         with:

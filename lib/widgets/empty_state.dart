@@ -11,6 +11,9 @@ class EmptyState extends StatelessWidget {
   final String title;
   final String? message;
   final String? actionLabel;
+
+  /// Icon on the action button; a plus by default.
+  final IconData actionIcon;
   final VoidCallback? onAction;
   final bool card;
 
@@ -23,6 +26,7 @@ class EmptyState extends StatelessWidget {
     required this.title,
     this.message,
     this.actionLabel,
+    this.actionIcon = Icons.add_rounded,
     this.onAction,
     this.card = false,
     this.compact = false,
@@ -73,7 +77,7 @@ class EmptyState extends StatelessWidget {
               SizedBox(height: compact ? 8 : 14),
               TextButton.icon(
                 onPressed: onAction,
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: Icon(actionIcon, size: 18),
                 label: Text(actionLabel!),
               ),
             ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../theme/responsive.dart';
 import '../theme/app_colors.dart';
@@ -8,7 +9,9 @@ import '../widgets/app_snackbar.dart';
 import '../widgets/page_header.dart';
 import '../widgets/section_header.dart';
 import '../widgets/glass_container.dart';
+import '../widgets/empty_state.dart';
 import '../providers/app_providers.dart';
+import '../providers/auth_provider.dart';
 import '../providers/expense_provider.dart';
 import '../models/expenses.dart';
 import '../widgets/wallet/financial_analysis_card.dart';
@@ -45,6 +48,10 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
   Widget build(BuildContext context) {
     final provider = ref.watch(expenseProviderProvider);
     final groupProvider = ref.watch(groupProviderProvider);
+    // Splitting needs other people, so it needs an account and a server;
+    // without one the app is personal-only.
+    final signedIn =
+        ref.watch(authProvider).state.status == AuthStatus.authenticated;
 
     return Scaffold(
       body: CustomScrollView(
@@ -120,10 +127,23 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                             refresh: _tripsRefresh,
                             onCreate: _createTrip,
                           )
-                        : EventsSection(
+                        : signedIn
+                        ? EventsSection(
                             key: const ValueKey('events'),
                             provider: groupProvider,
                             onCreate: () => _showCreateGroupSheet(context),
+                          )
+                        : EmptyState(
+                            key: const ValueKey('events-signed-out'),
+                            icon: Icons.groups_outlined,
+                            title: 'Split costs with friends',
+                            message:
+                                'Sign in to create events, share expenses '
+                                'and settle up. Your personal spending stays '
+                                'on this phone either way.',
+                            actionLabel: 'Sign in',
+                            actionIcon: Icons.login_rounded,
+                            onAction: () => context.push('/login'),
                           ),
                   ),
                 ],
@@ -152,6 +172,8 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                   tooltip: 'New trip',
                   child: const Icon(Icons.add),
                 )
+              : !signedIn
+              ? const SizedBox.shrink(key: ValueKey('no_fab'))
               : FloatingActionButton(
                   key: const ValueKey('new_event'),
                   onPressed: () => _showCreateGroupSheet(context),
