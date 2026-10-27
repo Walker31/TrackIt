@@ -297,7 +297,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _syncNow() async {
     setState(() => _syncing = true);
     // Providers reload themselves when the sync completes.
-    await SyncService().performSync();
+    await SyncService().performSync(forcePull: true);
     if (mounted) {
       setState(() => _syncing = false);
       AppSnackbar.success(context, 'Sync complete.');

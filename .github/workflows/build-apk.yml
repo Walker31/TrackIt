@@ -58,12 +58,14 @@ jobs:
           EOF2
 
       # The run number is the versionCode, so each build is a newer version.
-      - run: flutter build apk --release --build-number=${{ github.run_number }}
+      # One APK per CPU type is about a third the size of a universal one;
+      # practically every current phone takes the arm64-v8a build.
+      - run: flutter build apk --release --split-per-abi --build-number=${{ github.run_number }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: trackit-apk-${{ github.run_number }}
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-*-release.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -77,9 +79,12 @@ jobs:
         run: |
           version=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
           tag="v${version}-build.${{ github.run_number }}"
-          apk="trackit-${tag}.apk"
-          cp build/app/outputs/flutter-apk/app-release.apk "$apk"
-          gh release create "$tag" "$apk" \
+          out=build/app/outputs/flutter-apk
+          # arm64 is the one to install on any recent phone; armeabi-v7a is
+          # for old 32-bit devices.
+          cp "$out/app-arm64-v8a-release.apk" "trackit-${tag}.apk"
+          cp "$out/app-armeabi-v7a-release.apk" "trackit-${tag}-32bit.apk"
+          gh release create "$tag" "trackit-${tag}.apk" "trackit-${tag}-32bit.apk" \
             --target "${{ github.sha }}" \
             --title "TrackIt ${tag}" \
             --generate-notes \

@@ -116,13 +116,9 @@ class GroupProvider extends ChangeNotifier {
   /// Net balance for the current user across all groups (positive = owed
   /// to them). Used for an at-a-glance summary on the Events tab.
   Future<double> getMyBalance(int groupId) async {
+    // Balances already carry each member's username; no second group read.
+    final me = currentUsername ?? localUsername;
     final balances = await getBalances(groupId);
-    final group = await _service.getGroup(groupId);
-    final myMember = group.members
-        .where((m) => m.username == (currentUsername ?? localUsername))
-        .toList();
-    if (myMember.isEmpty) return 0.0;
-    final myBalance = balances.where((b) => b.memberId == myMember.first.id);
-    return myBalance.isEmpty ? 0.0 : myBalance.first.balance;
+    return balances.where((b) => b.username == me).firstOrNull?.balance ?? 0.0;
   }
 }

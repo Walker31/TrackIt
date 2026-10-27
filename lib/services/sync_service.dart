@@ -67,6 +67,9 @@ class SyncService {
   /// successful pull of [entity]. A server that ignores `updated_after` just
   /// returns everything, which the merge logic handles.
   Future<List<dynamic>> _fetchAll(String path, String entity) async {
+    // Every pull sits in a try that saves its cursor only after merging, so
+    // skipping here leaves the cursor where it was and nothing is missed.
+    if (!_pullThisPass) throw const _PullSkipped();
     final since = await _cursor(entity);
     final items = <dynamic>[];
     String? url = path;
@@ -133,32 +136,59 @@ class SyncService {
   /// and both insert the same pulled rows (duplicates). A call made mid-run
   /// queues one more pass and completes only after it, so awaiting callers
   /// always see fresh data.
-  Future<void> performSync() {
+  ///
+  /// [forcePull] fetches from the server even if it did so moments ago (app
+  /// start, pull-to-refresh, "Sync now"); otherwise an edit only pushes,
+  /// plus a pull when the last one is older than [_pullInterval].
+  Future<void> performSync({bool forcePull = false}) {
     // Local mode never talks to a server.
     if (!AppModeService.isServer) return Future.value();
+    if (forcePull) _forcePull = true;
     return _runner.run();
   }
 
+  /// Edits push straight away, but pulling every entity after each one
+  /// costs ~10 requests; pulls run at most this often unless forced.
+  static const _pullInterval = Duration(minutes: 2);
+  DateTime? _lastPull;
+  bool _forcePull = false;
+  bool _pullThisPass = true;
+
   Future<void> _syncPass() async {
     if (!await isOnline()) return;
+    final started = DateTime.now();
+    final last = _lastPull;
+    _pullThisPass =
+        _forcePull || last == null || started.difference(last) >= _pullInterval;
+    _forcePull = false;
     await _runSync();
+    if (_pullThisPass) _lastPull = started;
     _syncComplete.add(null);
   }
 
   Future<void> _runSync() async {
-    debugPrint('Starting Sync...');
+    debugPrint('Starting Sync (pull: $_pullThisPass)...');
     try {
       // Replay queued deletes first so the pulls below can't resurrect them.
       await SyncOutbox.drain(_apiService);
-      await _syncCatalog(); // categories/events first: transactions reference them
-      await _syncBudgets();
-      await _syncExpenses();
-      await _syncWorkouts();
-      await _syncRoutines();
-      await _syncGroups();
-      await _syncGroupMembers();
-      await _syncGroupExpenses();
-      await _syncSettlements();
+      // Chains that don't depend on each other run side by side; within a
+      // chain, order matters (transactions reference categories, members
+      // reference groups, and so on).
+      await Future.wait([
+        () async {
+          await _syncCatalog();
+          await _syncBudgets();
+          await _syncExpenses();
+        }(),
+        _syncWorkouts(),
+        _syncRoutines(),
+        () async {
+          await _syncGroups();
+          await _syncGroupMembers();
+          await _syncGroupExpenses();
+          await _syncSettlements();
+        }(),
+      ]);
       debugPrint('Sync Completed successfully.');
     } catch (e) {
       debugPrint('Sync Failed: $e');
@@ -1667,4 +1697,12 @@ class SyncService {
       debugPrint('Failed to fetch settlements from remote: $e');
     }
   }
+}
+
+/// Thrown by [SyncService._fetchAll] when this pass only pushes.
+class _PullSkipped implements Exception {
+  const _PullSkipped();
+
+  @override
+  String toString() => 'pull skipped (pulled recently)';
 }

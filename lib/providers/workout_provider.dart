@@ -74,7 +74,7 @@ class WorkoutProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
-    await SyncService().performSync();
+    await SyncService().performSync(forcePull: true);
   }
 
   /// Re-read today's session and routines from the local database.

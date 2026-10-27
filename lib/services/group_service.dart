@@ -74,11 +74,15 @@ class GroupService {
     final db = await _dbService.getDatabase();
     final groupMaps = await db.query('groups', orderBy: 'created_at DESC');
 
-    final groups = <Group>[];
-    for (final map in groupMaps) {
-      groups.add(await _hydrateGroup(map));
+    // One query for every group's members rather than one per group.
+    final membersByGroup = <Object?, List<GroupMember>>{};
+    for (final m in await db.query('group_members')) {
+      (membersByGroup[m['group_id']] ??= []).add(GroupMember.fromMap(m));
     }
-    return groups;
+    return [
+      for (final map in groupMaps)
+        Group.fromMap(map, members: membersByGroup[map['id']] ?? []),
+    ];
   }
 
   Future<Group> getGroup(int groupId) async {
@@ -111,17 +115,20 @@ class GroupService {
       orderBy: 'timestamp DESC',
     );
 
-    final expenses = <GroupExpense>[];
-    for (final map in maps) {
-      final splitMaps = await db.query(
-        'group_expense_splits',
-        where: 'expense_id = ?',
-        whereArgs: [map['id']],
-      );
-      final splits = splitMaps.map((s) => ExpenseSplit.fromMap(s)).toList();
-      expenses.add(GroupExpense.fromMap(map, splits: splits));
+    // Every split in the group in one query, rather than one per expense.
+    final splitMaps = await db.rawQuery(
+      'SELECT s.* FROM group_expense_splits s '
+      'JOIN group_expenses e ON e.id = s.expense_id WHERE e.group_id = ?',
+      [groupId],
+    );
+    final splitsByExpense = <Object?, List<ExpenseSplit>>{};
+    for (final s in splitMaps) {
+      (splitsByExpense[s['expense_id']] ??= []).add(ExpenseSplit.fromMap(s));
     }
-    return expenses;
+    return [
+      for (final map in maps)
+        GroupExpense.fromMap(map, splits: splitsByExpense[map['id']] ?? []),
+    ];
   }
 
   /// Add a group expense with pre-computed splits (offline-first).
@@ -258,9 +265,11 @@ class GroupService {
   /// they owe the group. Mirrors the server's `balances` calculation so
   /// both sides always agree.
   Future<List<MemberBalance>> getBalances(int groupId) async {
-    final group = await getGroup(groupId);
-    final expenses = await getGroupExpenses(groupId);
-    final settlements = await getSettlements(groupId);
+    final (group, expenses, settlements) = await (
+      getGroup(groupId),
+      getGroupExpenses(groupId),
+      getSettlements(groupId),
+    ).wait;
 
     final balances = <int, double>{for (final m in group.members) m.id!: 0.0};
 

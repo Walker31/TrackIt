@@ -93,22 +93,28 @@ class ExpenseProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
-    await SyncService().performSync();
+    await SyncService().performSync(forcePull: true);
   }
 
   /// Re-read today's and this month's figures from the local database.
   Future<void> _reload({bool notify = true}) async {
     try {
       final now = DateTime.now();
-      _expenses = await _service.getExpensesByDate(now);
-      _todaySummary = await _service.getDailySummary(now);
-      _monthlySpent = await _service.getMonthlyTotal(now.year, now.month);
-      _monthlyBudget = await _service.getMonthlyBudget();
-      _monthExpenses = await _service.getExpensesByMonth(
-        _selectedMonth.year,
-        _selectedMonth.month,
-      );
-      _categories = {for (final c in await _catalog.getCategories()) c.id: c};
+      // Independent reads: issue them together rather than one by one.
+      final (expenses, summary, spent, budget, month, categories) = await (
+        _service.getExpensesByDate(now),
+        _service.getDailySummary(now),
+        _service.getMonthlyTotal(now.year, now.month),
+        _service.getMonthlyBudget(),
+        _service.getExpensesByMonth(_selectedMonth.year, _selectedMonth.month),
+        _catalog.getCategories(),
+      ).wait;
+      _expenses = expenses;
+      _todaySummary = summary;
+      _monthlySpent = spent;
+      _monthlyBudget = budget;
+      _monthExpenses = month;
+      _categories = {for (final c in categories) c.id: c};
     } catch (e) {
       debugPrint('Error refreshing expenses: $e');
     }

@@ -64,3 +64,6 @@ app.*.map.json
 .env
 *.db
 *.sqlite
+
+# Release signing key backup (secret, never commit)
+signing-key-backup.txt
