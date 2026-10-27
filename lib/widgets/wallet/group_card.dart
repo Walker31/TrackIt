@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../models/expenses.dart';
-import '../glass_container.dart';
-import '../animated/tap_scale.dart';
 import '../animated/count_up_text.dart';
 
+/// One event in the events list, Splitwise-style: a square emoji tile,
+/// the name and member count, and what the event means for you on the
+/// right ("you are owed" / "you owe" / "settled up").
 class GroupCard extends StatelessWidget {
   final Group group;
   final double myBalance;
@@ -23,43 +24,42 @@ class GroupCard extends StatelessWidget {
     final isSettled = myBalance.abs() < 0.01;
     final isOwed = myBalance > 0;
     final balanceColor = isSettled
-        ? AppColors.textSecondary
+        ? AppColors.textTertiary
         : (isOwed ? AppColors.income : AppColors.outflow);
-    final balanceLabel = isSettled
-        ? "Settled up"
-        : (isOwed ? "You are owed" : "You owe");
+    final members = group.members.length;
 
-    return TapScale(
+    return InkWell(
       onTap: onTap,
-      child: GlassContainer(
-        padding: const EdgeInsets.all(16),
-        borderRadius: 16,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
             Container(
-              width: 48,
-              height: 48,
+              width: 52,
+              height: 52,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(group.icon, style: const TextStyle(fontSize: 22)),
+              child: Text(group.icon, style: const TextStyle(fontSize: 26)),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     group.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: AppTextStyles.bodyLg.copyWith(
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
-                    "${group.members.length} member${group.members.length == 1 ? '' : 's'}",
+                    '$members member${members == 1 ? '' : 's'}',
                     style: AppTextStyles.bodySm.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -67,25 +67,31 @@ class GroupCard extends StatelessWidget {
                 ],
               ),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  balanceLabel,
-                  style: AppTextStyles.bodySm.copyWith(
-                    color: AppColors.textSecondary,
+            const SizedBox(width: 12),
+            isSettled
+                ? Text(
+                    'settled up',
+                    style: AppTextStyles.bodySm.copyWith(color: balanceColor),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        isOwed ? 'you are owed' : 'you owe',
+                        style: AppTextStyles.bodySm.copyWith(
+                          color: balanceColor,
+                          fontSize: 12,
+                        ),
+                      ),
+                      CountUpText(
+                        value: myBalance.abs(),
+                        style: AppTextStyles.bodyLg.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: balanceColor,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 2),
-                CountUpText(
-                  value: myBalance.abs(),
-                  style: AppTextStyles.bodyLg.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: balanceColor,
-                  ),
-                ),
-              ],
-            ),
           ],
         ),
       ),

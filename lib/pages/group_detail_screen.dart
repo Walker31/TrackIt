@@ -11,7 +11,6 @@ import '../widgets/wallet/add_member_sheet.dart';
 import '../widgets/wallet/settle_up_sheet.dart';
 import '../widgets/wallet/balances_list.dart';
 import '../widgets/wallet/group_expense_list.dart';
-import '../widgets/animated/animated_segmented_tabs.dart';
 import '../widgets/app_snackbar.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/ledger_row.dart';
@@ -82,20 +81,6 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(group.icon, style: const TextStyle(fontSize: 20)),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                group.name,
-                style: AppTextStyles.h3,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
         actions: [
           IconButton(
             tooltip: 'Add member',
@@ -129,8 +114,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                   Responsive.centeringPadding(context),
                   8,
                   Responsive.centeringPadding(context),
-                  // Clear the two stacked FABs (Settle Up, Add Expense).
-                  170,
+                  // Clear the add-expense FAB.
+                  100,
                 ),
                 children: [
                   _RejectedMembersBanner(
@@ -139,10 +124,18 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                         if (m.syncError != null) m.username,
                     ],
                   ),
-                  AnimatedSegmentedTabs(
-                    labels: const ["Expenses", "Balances"],
-                    selectedIndex: _tabIndex,
-                    onChanged: (index) => setState(() => _tabIndex = index),
+                  _GroupHeader(
+                    group: group,
+                    myBalance: _balances
+                        .where((b) => b.memberId == myMemberId)
+                        .firstOrNull
+                        ?.balance,
+                    showingBalances: _tabIndex == 1,
+                    onSettleUp: myMemberId == null
+                        ? null
+                        : () => _showSettleUpSheet(context, group, myMemberId),
+                    onToggleBalances: () =>
+                        setState(() => _tabIndex = _tabIndex == 1 ? 0 : 1),
                   ),
                   const SizedBox(height: 20),
                   AnimatedSwitcher(
@@ -181,26 +174,11 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                 ],
               ),
             ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton(
-            heroTag: 'settle_up',
-            onPressed: myMemberId == null
-                ? null
-                : () => _showSettleUpSheet(context, group, myMemberId),
-            tooltip: 'Settle up',
-            backgroundColor: AppColors.income,
-            child: const Icon(Icons.handshake_outlined),
-          ),
-          const SizedBox(height: 12),
-          FloatingActionButton(
-            heroTag: 'add_expense',
-            onPressed: () => _showAddExpenseSheet(context, group, myMemberId),
-            tooltip: 'Add expense',
-            child: const Icon(Icons.add),
-          ),
-        ],
+      floatingActionButton: FloatingActionButton(
+        heroTag: 'add_expense',
+        onPressed: () => _showAddExpenseSheet(context, group, myMemberId),
+        tooltip: 'Add expense',
+        child: const Icon(Icons.add),
       ),
     );
   }
@@ -472,6 +450,132 @@ class _RejectedMembersBanner extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Splitwise-style event header: emoji tile and name, what the event
+/// means for you overall, and the Settle up / Balances actions.
+class _GroupHeader extends StatelessWidget {
+  final Group group;
+
+  /// Your net balance here; null while unknown or not a member.
+  final double? myBalance;
+  final bool showingBalances;
+  final VoidCallback? onSettleUp;
+  final VoidCallback onToggleBalances;
+
+  const _GroupHeader({
+    required this.group,
+    required this.myBalance,
+    required this.showingBalances,
+    required this.onSettleUp,
+    required this.onToggleBalances,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final balance = myBalance ?? 0;
+    final settled = balance.abs() < 0.01;
+    final color = settled
+        ? AppColors.textSecondary
+        : balance > 0
+        ? AppColors.income
+        : AppColors.outflow;
+    final members = group.members.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(group.icon, style: const TextStyle(fontSize: 32)),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    group.name,
+                    style: AppTextStyles.h2,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$members member${members == 1 ? '' : 's'}',
+                    style: AppTextStyles.bodyMd.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text.rich(
+          TextSpan(
+            style: AppTextStyles.bodyLg.copyWith(color: color),
+            children: settled
+                ? const [TextSpan(text: 'You are all settled up here')]
+                : [
+                    TextSpan(
+                      text: balance > 0 ? 'You are owed ' : 'You owe ',
+                    ),
+                    TextSpan(
+                      text: formatRupees(balance.abs()),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const TextSpan(text: ' overall'),
+                  ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            FilledButton(
+              onPressed: onSettleUp,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.outflow,
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
+              ),
+              child: const Text('Settle up'),
+            ),
+            const SizedBox(width: 10),
+            OutlinedButton.icon(
+              onPressed: onToggleBalances,
+              icon: Icon(
+                showingBalances
+                    ? Icons.receipt_long_outlined
+                    : Icons.balance_rounded,
+                size: 18,
+              ),
+              label: Text(showingBalances ? 'Expenses' : 'Balances'),
+              style: OutlinedButton.styleFrom(
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 10,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

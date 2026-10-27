@@ -336,7 +336,7 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
             AppButton(
               text: widget.initial == null ? "Save expense" : "Save changes",
               isLoading: _isSaving,
-              color: AppColors.expense,
+              color: AppColors.outflow,
               onPressed: _save,
             ),
           ],
