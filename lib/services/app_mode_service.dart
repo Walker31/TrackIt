@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:sqflite/sqflite.dart';
 import 'api_service.dart';
 import 'database_service.dart';
@@ -14,6 +15,10 @@ enum AppMode { local, server }
 class AppModeService {
   static const _modeKey = 'app_mode';
   static const _serverUrlKey = 'server_url';
+  static const _themeKey = 'theme_mode';
+
+  /// The saved appearance, loaded by [load]; follows the system by default.
+  static ThemeMode themeMode = ThemeMode.system;
 
   /// The chosen mode, or null on a fresh install that hasn't picked one.
   /// Read synchronously by the sync layer, so call [load] at startup.
@@ -32,7 +37,17 @@ class AppModeService {
     ApiService.baseUrl = (url == null || url.isEmpty)
         ? ApiService.defaultBaseUrl
         : url;
+
+    final theme = await _read(_themeKey);
+    themeMode =
+        ThemeMode.values.where((m) => m.name == theme).firstOrNull ??
+        ThemeMode.system;
     return current;
+  }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    themeMode = mode;
+    await _write(_themeKey, mode.name);
   }
 
   Future<void> setMode(AppMode mode) async {

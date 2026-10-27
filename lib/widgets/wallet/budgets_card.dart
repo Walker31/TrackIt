@@ -4,6 +4,7 @@ import '../../providers/expense_provider.dart';
 import '../../services/catalog_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
+import '../confirm_dialog.dart';
 import '../glass_container.dart';
 import '../../utils/format.dart';
 
@@ -120,7 +121,7 @@ class _BudgetsCardState extends State<BudgetsCard> {
   Widget build(BuildContext context) {
     return GlassContainer(
       padding: const EdgeInsets.all(16),
-      borderRadius: 20,
+      borderRadius: 16,
       child: FutureBuilder<List<_BudgetRow>>(
         future: _future,
         builder: (context, snap) {
@@ -134,14 +135,17 @@ class _BudgetsCardState extends State<BudgetsCard> {
                     child: Text(
                       'Category budgets',
                       style: AppTextStyles.bodyLg.copyWith(
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
                   TextButton.icon(
                     onPressed: _editBudget,
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
                     icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Set'),
+                    label: const Text('Add'),
                   ),
                 ],
               ),
@@ -168,6 +172,15 @@ class _BudgetsCardState extends State<BudgetsCard> {
       onTap: () =>
           _editBudget(preset: r.category, current: r.budget.limitAmount),
       onLongPress: () async {
+        final confirmed = await confirmDestructive(
+          context,
+          title: 'Remove budget?',
+          message:
+              'The ${formatRupees(r.budget.limitAmount)} limit for '
+              '${r.category.name} will be removed for this month.',
+          action: 'Remove',
+        );
+        if (!confirmed) return;
         await _catalog.deleteBudget(r.budget.id);
         _reload();
       },

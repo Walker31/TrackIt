@@ -23,22 +23,24 @@ class RoutineSelector extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionHeader(
-          title: "My Routines",
-          subtitle: "Quick Start",
-          action: IconButton(
+          title: "Routines",
+          action: TextButton.icon(
             onPressed: onCreateRoutine,
-            icon: const Icon(
-              Icons.add_circle_outline,
-              color: AppColors.primary,
-            ),
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('New'),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         if (provider.routines.isEmpty)
-          const Text("No routines saved yet.", style: AppTextStyles.bodySm)
+          Text(
+            "Save a routine to start a workout with one tap.",
+            style: AppTextStyles.bodyMd.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          )
         else
           SizedBox(
-            height: 80,
+            height: 72,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               itemCount: provider.routines.length,
@@ -51,20 +53,35 @@ class RoutineSelector extends StatelessWidget {
                     onLongPress: () => _confirmDelete(context, routine),
                     borderRadius: BorderRadius.circular(16),
                     child: GlassContainer(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      borderRadius: 16,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      borderRadius: 14,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            routine.name,
-                            style: AppTextStyles.bodyMd.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                          Icon(
+                            routine.type.icon,
+                            size: 20,
+                            color: routine.type.color,
                           ),
-                          Text(
-                            "${routine.exercises.length} Exercises",
-                            style: AppTextStyles.label,
+                          const SizedBox(width: 10),
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                routine.name,
+                                style: AppTextStyles.bodyMd.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              Text(
+                                '${routine.exercises.length} '
+                                'exercise${routine.exercises.length == 1 ? '' : 's'}',
+                                style: AppTextStyles.bodySm.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),

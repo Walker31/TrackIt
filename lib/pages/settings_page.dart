@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../theme/responsive.dart';
@@ -7,10 +8,13 @@ import '../providers/app_providers.dart';
 import '../providers/auth_provider.dart';
 import 'package:go_router/go_router.dart';
 
+import '../services/app_mode_service.dart';
 import '../services/sync_outbox.dart';
 import '../services/sync_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
+import '../widgets/app_button.dart';
+import '../widgets/app_card.dart';
 import '../widgets/app_snackbar.dart';
 import '../utils/format.dart';
 
@@ -42,42 +46,40 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider);
+    final side = Responsive.centeringPadding(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings', style: AppTextStyles.h2)),
+      appBar: AppBar(title: const Text('Settings')),
       body: ListView(
-        padding: EdgeInsets.fromLTRB(
-          Responsive.centeringPadding(context),
-          20,
-          Responsive.centeringPadding(context),
-          24,
-        ),
+        padding: EdgeInsets.fromLTRB(side, 8, side, 32),
         children: _staggered([
           _buildUserProfile(),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
           _buildSectionTitle('Appearance'),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Theme Mode', style: AppTextStyles.label),
-                  const SizedBox(height: 12),
-                  SegmentedButton<ThemeMode>(
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Theme', style: AppTextStyles.fieldLabel),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<ThemeMode>(
                     showSelectedIcon: false,
                     segments: const [
                       ButtonSegment<ThemeMode>(
                         value: ThemeMode.light,
+                        icon: Icon(Icons.light_mode_outlined, size: 18),
                         label: Text('Light'),
                       ),
                       ButtonSegment<ThemeMode>(
                         value: ThemeMode.dark,
+                        icon: Icon(Icons.dark_mode_outlined, size: 18),
                         label: Text('Dark'),
                       ),
                       ButtonSegment<ThemeMode>(
                         value: ThemeMode.system,
+                        icon: Icon(Icons.brightness_auto_outlined, size: 18),
                         label: Text('System'),
                       ),
                     ],
@@ -85,59 +87,55 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     onSelectionChanged: (selection) {
                       ref.read(themeModeProvider.notifier).state =
                           selection.first;
+                      AppModeService().setThemeMode(selection.first);
                     },
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
           _buildSectionTitle('Budget'),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Monthly Budget', style: AppTextStyles.label),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _budgetController,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      prefixText: '₹',
-                      hintText: 'Enter monthly budget',
-                      filled: true,
-                      fillColor: Theme.of(
-                        context,
-                      ).colorScheme.surface.withValues(alpha: 0.75),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Monthly budget', style: AppTextStyles.fieldLabel),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _budgetController,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _saveBudget(),
+                  style: AppTextStyles.bodyLg.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _saveBudget,
-                      icon: const Icon(Icons.save_outlined),
-                      label: const Text('Save Budget'),
-                    ),
+                  decoration: const InputDecoration(
+                    prefixText: '₹ ',
+                    hintText: 'e.g. 30000',
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Home shows how much of this is left each month.',
+                  style: AppTextStyles.bodySm.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                AppButton(text: 'Save budget', onPressed: _saveBudget),
+              ],
             ),
           ),
-          const SizedBox(height: 24),
-          _buildSectionTitle('Data & Sync'),
-          const SizedBox(height: 12),
+          const SizedBox(height: 28),
+          _buildSectionTitle('Data & sync'),
           _buildSyncCard(),
-          const SizedBox(height: 48),
-          if (ref.watch(authProvider).state.status == AuthStatus.authenticated)
+          if (ref.watch(authProvider).state.status ==
+              AuthStatus.authenticated) ...[
+            const SizedBox(height: 28),
             _buildLogoutButton(),
+          ],
         ]),
       ),
     );
@@ -146,65 +144,78 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget _buildSyncCard() {
     final isLocal = ref.watch(authProvider).state.status == AuthStatus.local;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              isLocal
-                  ? 'Stored on this device only'
-                  : 'Synced with your server',
-              style: AppTextStyles.label,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              isLocal
-                  ? 'Nothing leaves your phone. Connect a server any time to back up and sync.'
-                  : 'Changes are saved on this device first and synced when you are online.',
-              style: AppTextStyles.bodyMd.copyWith(
-                color: AppColors.textSecondary,
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isLocal
+                    ? Icons.phone_android_rounded
+                    : Icons.cloud_done_outlined,
+                size: 20,
+                color: isLocal ? AppColors.textSecondary : AppColors.income,
               ),
-            ),
-            const SizedBox(height: 16),
-            if (isLocal)
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => context.push('/login'),
-                  icon: const Icon(Icons.cloud_outlined),
-                  label: const Text('Connect to a server'),
-                ),
-              )
-            else ...[
-              FutureBuilder<int>(
-                future: SyncOutbox.pendingCount(),
-                builder: (context, snapshot) => Text(
-                  '${snapshot.data ?? 0} deletions waiting to sync',
-                  style: AppTextStyles.bodyMd,
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _syncNow,
-                  icon: const Icon(Icons.sync_rounded),
-                  label: const Text('Sync now'),
-                ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: _switchToLocal,
-                  child: const Text('Use on this device only'),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  isLocal
+                      ? 'Stored on this device only'
+                      : 'Synced with your server',
+                  style: AppTextStyles.bodyLg.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isLocal
+                ? 'Nothing leaves your phone. Connect a server any time to back up and sync.'
+                : 'Changes are saved on this device first and synced when you are online.',
+            style: AppTextStyles.bodyMd.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (isLocal)
+            AppButton(
+              text: 'Connect to a server',
+              icon: Icons.cloud_outlined,
+              onPressed: () => context.push('/login'),
+            )
+          else ...[
+            FutureBuilder<int>(
+              future: SyncOutbox.pendingCount(),
+              builder: (context, snapshot) {
+                final pending = snapshot.data ?? 0;
+                return Text(
+                  pending == 0
+                      ? 'Everything is up to date.'
+                      : '$pending deletion${pending == 1 ? '' : 's'} '
+                            'waiting to sync',
+                  style: AppTextStyles.bodySm.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            AppButton(
+              text: 'Sync now',
+              icon: Icons.sync_rounded,
+              onPressed: _syncNow,
+            ),
+            const SizedBox(height: 10),
+            AppButton(
+              text: 'Use on this device only',
+              isPrimary: false,
+              onPressed: _switchToLocal,
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -240,76 +251,50 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         : authState.user?['username'] ?? 'User';
     final email = isLocal ? 'Not signed in' : authState.user?['email'] ?? '';
 
-    return Card(
-      elevation: 0,
-      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 30,
-              backgroundColor: Theme.of(
-                context,
-              ).colorScheme.primary.withValues(alpha: 0.2),
-              child: Text(
-                username[0].toUpperCase(),
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
+    return AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 26,
+            backgroundColor: AppColors.primary.withValues(alpha: 0.14),
+            child: Text(
+              username.isEmpty ? '?' : username[0].toUpperCase(),
+              style: AppTextStyles.h2.copyWith(color: AppColors.primary),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  username,
+                  style: AppTextStyles.h3,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(username, style: AppTextStyles.h3),
-                  if (email.isNotEmpty)
-                    Text(
-                      email,
-                      style: AppTextStyles.bodyMd.copyWith(
-                        color: AppColors.textSecondary,
-                      ),
+                if (email.isNotEmpty)
+                  Text(
+                    email,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.bodyMd.copyWith(
+                      color: AppColors.textSecondary,
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildLogoutButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: _handleLogout,
-        icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
-        label: const Text(
-          'Log Out',
-          style: TextStyle(
-            color: Colors.redAccent,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          side: const BorderSide(color: Colors.redAccent, width: 1.5),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-        ),
-      ),
+    return AppButton(
+      text: 'Log out',
+      icon: Icons.logout_rounded,
+      color: AppColors.expense,
+      onPressed: _handleLogout,
     );
   }
 
@@ -317,7 +302,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Log Out'),
+        title: const Text('Log out?'),
         content: const Text('Are you sure you want to log out?'),
         actions: [
           TextButton(
@@ -327,8 +312,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text(
-              'Log Out',
-              style: TextStyle(color: Colors.redAccent),
+              'Log out',
+              style: TextStyle(color: AppColors.expense),
             ),
           ),
         ],
@@ -342,11 +327,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: AppTextStyles.h3.copyWith(
-        color: Theme.of(context).colorScheme.onSurface,
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 10),
+      child: Text(title.toUpperCase(), style: AppTextStyles.overline),
     );
   }
 

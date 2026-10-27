@@ -27,7 +27,8 @@ class _AddMemberSheetState extends State<AddMemberSheet> {
         left: 24,
         right: 24,
       ),
-      borderRadius: 32,
+      borderRadius: 24,
+      sheet: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -35,7 +36,7 @@ class _AddMemberSheetState extends State<AddMemberSheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Add Member", style: AppTextStyles.h2),
+              const Text("Add member", style: AppTextStyles.h2),
               IconButton(
                 onPressed: () => Navigator.pop(context),
                 icon: const Icon(Icons.close),
@@ -60,7 +61,8 @@ class _AddMemberSheetState extends State<AddMemberSheet> {
           ),
           const SizedBox(height: 32),
           AppButton(
-            text: _isSaving ? "Adding..." : "Add Member",
+            text: "Add member",
+            isLoading: _isSaving,
             onPressed: _isSaving
                 ? () {}
                 : () async {

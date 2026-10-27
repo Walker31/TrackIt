@@ -20,8 +20,8 @@ class SpendingChart extends StatelessWidget {
         barRods: [
           BarChartRodData(
             toY: e.value,
-            color: AppColors.secondary,
-            width: 16,
+            color: AppColors.primary,
+            width: 18,
             borderRadius: BorderRadius.circular(4),
           ),
         ],
@@ -32,9 +32,14 @@ class SpendingChart extends StatelessWidget {
     final maxY = peak <= 0 ? 100.0 : peak * 1.2;
     final interval = niceInterval(maxY);
 
+    final total = data.values.fold<double>(0, (a, b) => a + b);
+
     return AppCard(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ChartHeader(caption: 'Last 7 days', value: formatRupees(total)),
+          const SizedBox(height: 16),
           SizedBox(
             height: 200,
             child: BarChart(
@@ -67,7 +72,7 @@ class SpendingChart extends StatelessWidget {
                           padding: const EdgeInsets.only(top: 8.0),
                           child: Text(
                             DateFormat('E').format(date).toUpperCase(),
-                            style: AppTextStyles.label.copyWith(fontSize: 10),
+                            style: chartAxisStyle,
                           ),
                         );
                       },
@@ -83,10 +88,7 @@ class SpendingChart extends StatelessWidget {
                         if (value == meta.max) return const SizedBox.shrink();
                         return Text(
                           formatRupeesCompact(value),
-                          style: AppTextStyles.label.copyWith(
-                            fontSize: 9,
-                            letterSpacing: 0,
-                          ),
+                          style: chartAxisStyle,
                         );
                       },
                     ),
@@ -112,8 +114,6 @@ class SpendingChart extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          const Text("Last 7 Days Spending", style: AppTextStyles.bodySm),
         ],
       ),
     );
@@ -132,4 +132,34 @@ double niceInterval(double maxY) {
     if (magnitude * step >= raw) return magnitude * step;
   }
   return magnitude * 10;
+}
+
+/// Axis tick labels shared by the Stats charts.
+TextStyle get chartAxisStyle => AppTextStyles.bodySm.copyWith(
+  fontSize: 10,
+  fontWeight: FontWeight.w500,
+  color: AppColors.textSecondary,
+);
+
+/// "Last 7 days" with the period's total, above a chart.
+class ChartHeader extends StatelessWidget {
+  final String caption;
+  final String value;
+
+  const ChartHeader({super.key, required this.caption, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          caption,
+          style: AppTextStyles.bodySm.copyWith(color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 2),
+        Text(value, style: AppTextStyles.h2),
+      ],
+    );
+  }
 }

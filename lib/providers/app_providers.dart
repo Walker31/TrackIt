@@ -5,6 +5,7 @@ import 'expense_provider.dart';
 import 'workout_provider.dart';
 import 'group_provider.dart';
 import 'auth_provider.dart';
+import '../services/app_mode_service.dart';
 
 // Rebuilt when the auth/mode status changes (login, logout, switching to
 // local mode) so the first refresh after the change triggers a sync.
@@ -27,4 +28,6 @@ final groupProviderProvider = ChangeNotifierProvider<GroupProvider>((ref) {
   );
 });
 
-final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.light);
+final themeModeProvider = StateProvider<ThemeMode>(
+  (ref) => AppModeService.themeMode,
+);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../app_card.dart';
+import '../empty_state.dart';
 import '../section_header.dart';
 import '../../models/workouts.dart';
 import '../../providers/workout_provider.dart';
@@ -29,27 +30,19 @@ class FitnessGoalSection extends StatelessWidget {
           title: "Today's workout",
           action: TextButton(
             onPressed: onViewAll,
-            child: Text(
-              "View all",
-              style: AppTextStyles.bodyMd.copyWith(color: AppColors.primary),
-            ),
+            child: const Text("View all"),
           ),
         ),
         const SizedBox(height: 8),
         if (firstLoad)
           const SizedBox(height: 80)
         else if (workout == null || workout.exercises.isEmpty)
-          AppCard(
-            child: SizedBox(
-              width: double.infinity,
-              child: Text(
-                "No exercises logged today",
-                textAlign: TextAlign.center,
-                style: AppTextStyles.bodyMd.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
+          const EmptyState(
+            card: true,
+            compact: true,
+            icon: Icons.fitness_center_rounded,
+            title: 'No workout yet',
+            message: 'Add exercises in the Workout tab to track sets.',
           )
         else
           Column(
@@ -112,7 +105,7 @@ class FitnessGoalSection extends StatelessWidget {
                   value: v,
                   minHeight: 3,
                   backgroundColor: AppColors.surfaceVariant,
-                  valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                  valueColor: AlwaysStoppedAnimation(AppColors.primary),
                 ),
               ),
             ),

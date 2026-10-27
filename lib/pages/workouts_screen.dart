@@ -4,7 +4,6 @@ import '../theme/responsive.dart';
 import '../widgets/animated/fade_slide_in.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
-import 'package:go_router/go_router.dart';
 import '../widgets/page_header.dart';
 import '../widgets/section_header.dart';
 import '../models/workouts.dart';
@@ -17,6 +16,7 @@ import '../widgets/workouts/rest_timer_overlay.dart';
 import '../widgets/app_button.dart';
 import '../widgets/app_snackbar.dart';
 import '../widgets/glass_container.dart';
+import '../utils/format.dart';
 
 class WorkoutsScreen extends ConsumerStatefulWidget {
   const WorkoutsScreen({super.key});
@@ -37,9 +37,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
 
     if (workout == null) {
       return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
-        ),
+        body: Center(child: CircularProgressIndicator(strokeWidth: 2)),
       );
     }
 
@@ -49,18 +47,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
           CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
-              SliverToBoxAdapter(
-                child: PageHeader(
-                  title: 'Training',
-                  trailing: IconButton(
-                    onPressed: () => context.push('/settings'),
-                    icon: Icon(
-                      Icons.settings_outlined,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ),
-              ),
+              const SliverToBoxAdapter(child: PageHeader(title: 'Workout')),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
@@ -73,7 +60,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                     gap: 40,
                     left: [
                       FadeSlideIn(child: SessionSummaryCard(workout: workout)),
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 28),
                       FadeSlideIn(
                         index: 1,
                         child: RoutineSelector(
@@ -86,12 +73,9 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                     right: [
                       const FadeSlideIn(
                         index: 2,
-                        child: SectionHeader(
-                          title: "Active Exercises",
-                          subtitle: "Workout Progress",
-                        ),
+                        child: SectionHeader(title: "Exercises"),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       FadeSlideIn(
                         index: 3,
                         child: ExerciseGrid(
@@ -99,9 +83,10 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                           selectedIndex: _selectedExerciseIndex ?? 0,
                           onSelect: (index) =>
                               _onExerciseSelected(workout, index),
+                          onAdd: () => _showAddExerciseSheet(context),
                         ),
                       ),
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 20),
                       if (workout.exercises.isNotEmpty) ...[
                         // Re-run the entrance when switching exercises.
                         FadeSlideIn(
@@ -112,7 +97,9 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                             provider: provider,
                             weight: _weight,
                             reps: _reps,
-                            onWeightDec: () => setState(() => _weight -= 2.5),
+                            onWeightDec: () => setState(
+                              () => _weight = (_weight - 2.5).clamp(0, 999),
+                            ),
                             onWeightInc: () => setState(() => _weight += 2.5),
                             onRepsDec: () =>
                                 setState(() => _reps > 0 ? _reps-- : 0),
@@ -157,8 +144,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
         padding: EdgeInsets.only(bottom: Responsive.navInset(context)),
         child: FloatingActionButton(
           onPressed: () => _showAddExerciseSheet(context),
-          tooltip: 'Add Exercise',
-          backgroundColor: AppColors.primary,
+          tooltip: 'Add exercise',
           child: const Icon(Icons.add),
         ),
       ),
@@ -184,33 +170,44 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text("SET HISTORY", style: AppTextStyles.label),
-        const SizedBox(height: 12),
+        Text("Sets", style: AppTextStyles.fieldLabel),
+        const SizedBox(height: 10),
         ...exercise.sets.map(
           (set) => Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Row(
               children: [
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 30,
+                  height: 30,
                   decoration: BoxDecoration(
                     color: set.isCompleted
-                        ? AppColors.surfaceVariant
-                        : AppColors.surface,
+                        ? AppColors.secondary.withValues(alpha: 0.12)
+                        : AppColors.surfaceVariant,
                     shape: BoxShape.circle,
                   ),
                   child: Center(
                     child: Text(
                       "${set.setNumber}",
-                      style: AppTextStyles.bodySm,
+                      style: AppTextStyles.bodySm.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: set.isCompleted
+                            ? AppColors.secondary
+                            : AppColors.textSecondary,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 14),
                 Text(
-                  "${set.weight}kg x ${set.reps}",
-                  style: AppTextStyles.bodyMd,
+                  set.isCompleted || set.reps > 0
+                      ? "${formatWeight(set.weight)} kg × ${set.reps}"
+                      : "Not done yet",
+                  style: AppTextStyles.bodyMd.copyWith(
+                    color: set.isCompleted
+                        ? AppColors.textPrimary
+                        : AppColors.textSecondary,
+                  ),
                 ),
                 const Spacer(),
                 Icon(
@@ -288,21 +285,24 @@ class _CreateRoutineSheetState extends State<_CreateRoutineSheet> {
         left: 24,
         right: 24,
       ),
-      borderRadius: 32,
+      borderRadius: 24,
+      sheet: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Create Routine", style: AppTextStyles.h2),
+          const Text("New routine", style: AppTextStyles.h2),
           const SizedBox(height: 24),
           TextField(
             controller: _nameController,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
             decoration: const InputDecoration(
-              hintText: "Routine Name (e.g. Upper Body A)",
+              hintText: "Routine name (e.g. Upper Body A)",
             ),
           ),
           const SizedBox(height: 24),
-          Text("Workout Type", style: AppTextStyles.label),
+          Text("Workout type", style: AppTextStyles.fieldLabel),
           const SizedBox(height: 12),
           Row(
             children: WorkoutType.values.map((type) {
@@ -324,7 +324,7 @@ class _CreateRoutineSheetState extends State<_CreateRoutineSheet> {
           ),
           const SizedBox(height: 32),
           AppButton(
-            text: "Create Routine",
+            text: "Create routine",
             onPressed: () {
               if (_nameController.text.isNotEmpty) {
                 widget.onSave(
@@ -366,24 +366,29 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
         left: 24,
         right: 24,
       ),
-      borderRadius: 32,
+      borderRadius: 24,
+      sheet: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("New Exercise", style: AppTextStyles.h2),
+          const Text("New exercise", style: AppTextStyles.h2),
           const SizedBox(height: 24),
           TextField(
             controller: _nameController,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            textInputAction: TextInputAction.next,
             decoration: const InputDecoration(
-              hintText: "Exercise Name (e.g. Bench Press)",
+              hintText: "Exercise name (e.g. Bench Press)",
             ),
           ),
           const SizedBox(height: 16),
           TextField(
             controller: _muscleController,
+            textCapitalization: TextCapitalization.words,
             decoration: const InputDecoration(
-              hintText: "Muscle Group (e.g. Chest)",
+              hintText: "Muscle group (e.g. Chest)",
             ),
           ),
           const SizedBox(height: 24),
@@ -409,7 +414,7 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
           ),
           const SizedBox(height: 32),
           AppButton(
-            text: "Add to Workout",
+            text: "Add to workout",
             onPressed: () {
               if (_nameController.text.isNotEmpty) {
                 final exercise = Exercise(

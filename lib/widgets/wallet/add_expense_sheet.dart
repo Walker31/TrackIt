@@ -169,7 +169,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
     final title = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('New event'),
+        title: const Text('New trip'),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -266,7 +266,8 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: media.size.height * 0.92),
         child: GlassContainer(
-          borderRadius: 28,
+          borderRadius: 24,
+          sheet: true,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -454,7 +455,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
             _divider(),
             _DetailRow(
               icon: Icons.luggage_outlined,
-              label: 'Event',
+              label: 'Trip',
               child: _chipRow([
                 _SelectChip(
                   label: 'New',
@@ -532,7 +533,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   Widget _section(String title, Widget child) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(title, style: AppTextStyles.label),
+      Text(title, style: AppTextStyles.fieldLabel),
       const SizedBox(height: 10),
       child,
     ],

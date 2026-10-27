@@ -7,6 +7,10 @@ String formatRupees(double amount) {
   return '₹${NumberFormat(whole ? '#,##,##0' : '#,##,##0.00', 'en_IN').format(amount)}';
 }
 
+/// Weight without a pointless ".0": 80 -> "80", 82.5 -> "82.5".
+String formatWeight(double kg) =>
+    kg == kg.roundToDouble() ? kg.toStringAsFixed(0) : kg.toStringAsFixed(1);
+
 /// Short form for chart axes: ₹950, ₹1.2k, ₹3.4L.
 String formatRupeesCompact(double amount) {
   if (amount >= 100000) return '₹${_trim(amount / 100000)}L';

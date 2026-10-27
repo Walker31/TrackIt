@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../theme/app_colors.dart';
-import '../../theme/app_text_styles.dart';
 import '../app_card.dart';
-import 'spending_chart.dart' show niceInterval;
+import '../empty_state.dart';
+import 'spending_chart.dart' show niceInterval, chartAxisStyle, ChartHeader;
 
 class VolumeChart extends StatelessWidget {
   final Map<DateTime, double> data;
@@ -22,9 +22,26 @@ class VolumeChart extends StatelessWidget {
     final maxY = peak <= 0 ? 100.0 : peak * 1.2;
     final interval = niceInterval(maxY);
 
+    final total = data.values.fold<double>(0, (a, b) => a + b);
+    if (total <= 0) {
+      return const EmptyState(
+        card: true,
+        icon: Icons.show_chart_rounded,
+        title: 'No training this week',
+        message: 'Complete sets in the Workout tab to see your volume.',
+      );
+    }
+
     return AppCard(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          ChartHeader(
+            caption: 'Last 7 days',
+            value:
+                '${NumberFormat.decimalPattern('en_IN').format(total.round())} kg',
+          ),
+          const SizedBox(height: 16),
           SizedBox(
             height: 200,
             child: LineChart(
@@ -58,7 +75,7 @@ class VolumeChart extends StatelessWidget {
                           padding: const EdgeInsets.only(top: 8.0),
                           child: Text(
                             DateFormat('E').format(date).toUpperCase(),
-                            style: AppTextStyles.label.copyWith(fontSize: 10),
+                            style: chartAxisStyle,
                           ),
                         );
                       },
@@ -74,10 +91,7 @@ class VolumeChart extends StatelessWidget {
                         if (value == meta.max) return const SizedBox.shrink();
                         return Text(
                           '${value.toStringAsFixed(0)} kg',
-                          style: AppTextStyles.label.copyWith(
-                            fontSize: 9,
-                            letterSpacing: 0,
-                          ),
+                          style: chartAxisStyle,
                         );
                       },
                     ),
@@ -95,7 +109,7 @@ class VolumeChart extends StatelessWidget {
                     spots: spots,
                     isCurved: true,
                     color: AppColors.primary,
-                    barWidth: 4,
+                    barWidth: 3,
                     isStrokeCapRound: true,
                     dotData: const FlDotData(show: true),
                     belowBarData: BarAreaData(
@@ -107,8 +121,6 @@ class VolumeChart extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          const Text("Workout Volume (kg)", style: AppTextStyles.bodySm),
         ],
       ),
     );

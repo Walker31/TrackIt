@@ -39,7 +39,8 @@ class _CreateGroupSheetState extends State<CreateGroupSheet> {
         left: 24,
         right: 24,
       ),
-      borderRadius: 32,
+      borderRadius: 24,
+      sheet: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -47,7 +48,7 @@ class _CreateGroupSheetState extends State<CreateGroupSheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("New Event", style: AppTextStyles.h2),
+              const Text("New event", style: AppTextStyles.h2),
               IconButton(
                 onPressed: () => Navigator.pop(context),
                 icon: const Icon(Icons.close),
@@ -55,7 +56,7 @@ class _CreateGroupSheetState extends State<CreateGroupSheet> {
             ],
           ),
           const SizedBox(height: 24),
-          Text("Icon", style: AppTextStyles.label),
+          Text("Icon", style: AppTextStyles.fieldLabel),
           const SizedBox(height: 12),
           SizedBox(
             height: 50,
@@ -110,7 +111,8 @@ class _CreateGroupSheetState extends State<CreateGroupSheet> {
           ],
           const SizedBox(height: 32),
           AppButton(
-            text: _isSaving ? "Creating..." : "Create Event",
+            text: "Create event",
+            isLoading: _isSaving,
             onPressed: _isSaving
                 ? () {}
                 : () async {

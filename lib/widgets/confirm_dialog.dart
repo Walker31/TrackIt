@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 
 /// Ask before a destructive action. Resolves true only if confirmed.
 Future<bool> confirmDestructive(
@@ -19,7 +20,7 @@ Future<bool> confirmDestructive(
         ),
         TextButton(
           onPressed: () => Navigator.pop(context, true),
-          child: Text(action, style: const TextStyle(color: Colors.redAccent)),
+          child: Text(action, style: const TextStyle(color: AppColors.expense)),
         ),
       ],
     ),

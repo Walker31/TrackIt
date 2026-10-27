@@ -155,7 +155,8 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
         left: 24,
         right: 24,
       ),
-      borderRadius: 32,
+      borderRadius: 24,
+      sheet: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -189,7 +190,10 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
                       : "$otherName doesn't owe you anything"),
           ),
           const SizedBox(height: 20),
-          Text(paid ? 'Paid to' : 'Received from', style: AppTextStyles.label),
+          Text(
+            paid ? 'Paid to' : 'Received from',
+            style: AppTextStyles.fieldLabel,
+          ),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -276,7 +280,7 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
                         color: AppColors.textTertiary.withValues(alpha: 0.5),
                       ),
                     ),
-                    focusedBorder: const UnderlineInputBorder(
+                    focusedBorder: UnderlineInputBorder(
                       borderSide: BorderSide(color: AppColors.income, width: 2),
                     ),
                   ),
@@ -368,8 +372,8 @@ class _FlowSummary extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 avatar(from),
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 20),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 20),
                   child: Icon(
                     Icons.arrow_forward_rounded,
                     color: AppColors.income,

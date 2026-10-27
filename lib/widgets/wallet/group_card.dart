@@ -33,7 +33,7 @@ class GroupCard extends StatelessWidget {
       onTap: onTap,
       child: GlassContainer(
         padding: const EdgeInsets.all(16),
-        borderRadius: 20,
+        borderRadius: 16,
         child: Row(
           children: [
             Container(
