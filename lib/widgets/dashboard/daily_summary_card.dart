@@ -58,7 +58,7 @@ class DailySummaryCard extends StatelessWidget {
             value: monthlySpend,
             style: AppTextStyles.h1.copyWith(
               fontSize: 38,
-              color: over ? AppColors.expense : AppColors.textPrimary,
+              color: over ? AppColors.outflow : AppColors.textPrimary,
             ),
           ),
           if (monthlyBudget > 0)
@@ -80,7 +80,7 @@ class DailySummaryCard extends StatelessWidget {
                 minHeight: 6,
                 backgroundColor: AppColors.surfaceVariant,
                 valueColor: AlwaysStoppedAnimation(
-                  over ? AppColors.expense : AppColors.primary,
+                  over ? AppColors.outflow : AppColors.primary,
                 ),
               ),
             ),

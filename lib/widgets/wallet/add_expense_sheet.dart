@@ -257,7 +257,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   @override
   Widget build(BuildContext context) {
     final isIncome = _type == TxnType.income;
-    final accent = isIncome ? AppColors.income : AppColors.expense;
+    final accent = isIncome ? AppColors.income : AppColors.outflow;
     final media = MediaQuery.of(context);
     final amount = _amount;
 

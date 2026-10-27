@@ -161,7 +161,7 @@ class _TripCard extends StatelessWidget {
                     formatRupees(data.total),
                     style: AppTextStyles.bodyLg.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: AppColors.expense,
+                      color: AppColors.outflow,
                     ),
                   ),
                   Text(

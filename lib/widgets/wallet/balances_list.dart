@@ -36,7 +36,7 @@ class BalancesList extends StatelessWidget {
         final isOwed = b.balance > 0;
         final color = isSettled
             ? AppColors.textSecondary
-            : (isOwed ? AppColors.income : AppColors.expense);
+            : (isOwed ? AppColors.income : AppColors.outflow);
 
         return FadeSlideIn(
           index: index,

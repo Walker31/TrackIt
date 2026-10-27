@@ -167,7 +167,7 @@ class _BudgetsCardState extends State<BudgetsCard> {
   Widget _row(_BudgetRow r) {
     final ratio = r.spent / r.budget.limitAmount;
     final over = ratio > 1;
-    final color = over ? AppColors.expense : r.category.colorValue;
+    final color = over ? AppColors.outflow : r.category.colorValue;
     return InkWell(
       onTap: () =>
           _editBudget(preset: r.category, current: r.budget.limitAmount),
@@ -200,7 +200,7 @@ class _BudgetsCardState extends State<BudgetsCard> {
                   '${formatRupees(r.spent)} / '
                   '${formatRupees(r.budget.limitAmount)}',
                   style: AppTextStyles.bodySm.copyWith(
-                    color: over ? AppColors.expense : AppColors.textSecondary,
+                    color: over ? AppColors.outflow : AppColors.textSecondary,
                   ),
                 ),
               ],

@@ -24,7 +24,7 @@ class GroupCard extends StatelessWidget {
     final isOwed = myBalance > 0;
     final balanceColor = isSettled
         ? AppColors.textSecondary
-        : (isOwed ? AppColors.income : AppColors.expense);
+        : (isOwed ? AppColors.income : AppColors.outflow);
     final balanceLabel = isSettled
         ? "Settled up"
         : (isOwed ? "You are owed" : "You owe");

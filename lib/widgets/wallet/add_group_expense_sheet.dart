@@ -244,7 +244,7 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
               amountController: _amountController,
               icon: _category.icon,
               iconColor: _category.color,
-              accent: AppColors.expense,
+              accent: AppColors.outflow,
               onAmountChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 24),
