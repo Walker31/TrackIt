@@ -46,9 +46,9 @@ class AppColors {
   static const Color workout = Color(0xFF9B6BD6); // Purple
 
   // Light surfaces/text (also used directly by AppTheme.lightTheme)
-  static const Color lightBackground = Color(0xFFF4F4F4);
+  static const Color lightBackground = Color(0xFFF5F5F5);
   static const Color lightSurface = Color(0xFFFFFFFF);
-  static const Color lightSurfaceVariant = Color(0xFFEFEFEF);
+  static const Color lightSurfaceVariant = Color(0xFFF2F2F2);
   static const Color lightTextPrimary = Color(0xFF222222);
   static const Color lightTextSecondary = Color(0xFF6B6B6B);
   static const Color lightTextTertiary = Color(0xFF9B9B9B);

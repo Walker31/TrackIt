@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Flat surface with a hairline border. No shadows — depth comes from the
-/// surface/background contrast alone.
+/// Surface with a hairline border. In the light theme a faint shadow lifts
+/// it off the grey page; the dark theme relies on surface contrast alone.
 class AppCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry? padding;
@@ -22,6 +22,11 @@ class AppCard extends StatelessWidget {
     this.gradient,
   });
 
+  static const _lightShadow = [
+    BoxShadow(color: Color(0x0A000000), blurRadius: 12, offset: Offset(0, 4)),
+    BoxShadow(color: Color(0x05000000), blurRadius: 2, offset: Offset(0, 1)),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -35,11 +40,11 @@ class AppCard extends StatelessWidget {
             Border.all(
               color: isDark
                   ? Colors.white.withValues(alpha: 0.07)
-                  : Colors.black.withValues(alpha: 0.06),
+                  : Colors.black.withValues(alpha: 0.05),
               width: 1,
             ),
         gradient: gradient,
-        boxShadow: boxShadow,
+        boxShadow: boxShadow ?? (isDark ? null : _lightShadow),
       ),
       clipBehavior: Clip.antiAlias,
       child: Padding(
