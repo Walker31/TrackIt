@@ -15,6 +15,9 @@ class GroupExpenseList extends StatelessWidget {
   /// The viewer's member id in this group, for "you lent / you borrowed".
   final int? currentMemberId;
 
+  /// False offline: rows show what you spent rather than lent / borrowed.
+  final bool shared;
+
   /// Long-press actions (edit / delete).
   final void Function(GroupExpense expense)? onExpenseLongPress;
   final void Function(Settlement settlement)? onSettlementLongPress;
@@ -25,6 +28,7 @@ class GroupExpenseList extends StatelessWidget {
     this.settlements = const [],
     required this.members,
     this.currentMemberId,
+    this.shared = true,
     this.onExpenseLongPress,
     this.onSettlementLongPress,
   });
@@ -62,7 +66,9 @@ class GroupExpenseList extends StatelessWidget {
           final payer = iPaid ? 'You' : _usernameFor(e.payerMemberId);
 
           // Splitwise: what the expense means for *you*.
-          final (label, amount, color) = iPaid
+          final (label, amount, color) = !shared
+              ? ('you spent', e.amount, AppColors.outflow)
+              : iPaid
               ? ('you lent', e.amount - myShare, AppColors.income)
               : myShare > 0
               ? ('you borrowed', myShare, AppColors.outflow)
@@ -75,7 +81,9 @@ class GroupExpenseList extends StatelessWidget {
               icon: e.category.icon,
               iconColor: e.category.color,
               title: e.description ?? e.category.displayName,
-              subtitle: '$payer paid ${formatRupees(e.amount)}',
+              subtitle: shared
+                  ? '$payer paid ${formatRupees(e.amount)}'
+                  : e.category.displayName,
               trailingLabel: label,
               trailingAmount: amount == null ? null : formatRupees(amount),
               trailingColor: color,

@@ -9,14 +9,20 @@ import '../animated/count_up_text.dart';
 /// right ("you are owed" / "you owe" / "settled up").
 class GroupCard extends StatelessWidget {
   final Group group;
+
+  /// Your balance when [shared]; otherwise the event's total spend.
   final double myBalance;
   final VoidCallback onTap;
+
+  /// False offline: the event only groups your own spending.
+  final bool shared;
 
   const GroupCard({
     super.key,
     required this.group,
     required this.myBalance,
     required this.onTap,
+    this.shared = true,
   });
 
   @override
@@ -59,7 +65,9 @@ class GroupCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '$members member${members == 1 ? '' : 's'}',
+                    shared
+                        ? '$members member${members == 1 ? '' : 's'}'
+                        : 'Just you',
                     style: AppTextStyles.bodySm.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -68,7 +76,26 @@ class GroupCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            isSettled
+            !shared
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        'spent',
+                        style: AppTextStyles.bodySm.copyWith(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                      CountUpText(
+                        value: myBalance,
+                        style: AppTextStyles.bodyLg.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  )
+                : isSettled
                 ? Text(
                     'settled up',
                     style: AppTextStyles.bodySm.copyWith(color: balanceColor),

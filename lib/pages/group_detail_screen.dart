@@ -4,7 +4,9 @@ import '../theme/responsive.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../models/expenses.dart';
+import 'package:go_router/go_router.dart';
 import '../providers/app_providers.dart';
+import '../providers/auth_provider.dart';
 import '../providers/group_provider.dart';
 import '../widgets/wallet/add_group_expense_sheet.dart';
 import '../widgets/wallet/add_member_sheet.dart';
@@ -78,15 +80,21 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     }
 
     final myMemberId = _myMemberId(group);
+    // Offline an event only groups your own spending; members, splits and
+    // settling up need an account.
+    final shared =
+        ref.watch(authProvider).state.status == AuthStatus.authenticated;
+    final showBalances = shared && _tabIndex == 1;
 
     return Scaffold(
       appBar: AppBar(
         actions: [
-          IconButton(
-            tooltip: 'Add member',
-            icon: const Icon(Icons.person_add_alt_outlined),
-            onPressed: () => _showAddMemberSheet(context),
-          ),
+          if (shared)
+            IconButton(
+              tooltip: 'Add member',
+              icon: const Icon(Icons.person_add_alt_outlined),
+              onPressed: () => _showAddMemberSheet(context),
+            ),
           PopupMenuButton<String>(
             onSelected: (value) =>
                 value == 'edit' ? _editGroup(group) : _deleteGroup(group),
@@ -126,11 +134,13 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                   ),
                   _GroupHeader(
                     group: group,
+                    shared: shared,
+                    totalSpent: _expenses.fold(0.0, (t, e) => t + e.amount),
                     myBalance: _balances
                         .where((b) => b.memberId == myMemberId)
                         .firstOrNull
                         ?.balance,
-                    showingBalances: _tabIndex == 1,
+                    showingBalances: showBalances,
                     onSettleUp: myMemberId == null
                         ? null
                         : () => _showSettleUpSheet(context, group, myMemberId),
@@ -150,7 +160,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                         child: child,
                       ),
                     ),
-                    child: _tabIndex == 0
+                    child: !showBalances
                         ? KeyedSubtree(
                             key: const ValueKey('expenses'),
                             child: GroupExpenseList(
@@ -158,6 +168,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                               settlements: _settlements,
                               members: group.members,
                               currentMemberId: myMemberId,
+                              shared: shared,
                               onExpenseLongPress: (e) =>
                                   _expenseActions(group, e, myMemberId),
                               onSettlementLongPress: _deleteSettlement,
@@ -195,6 +206,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => AddGroupExpenseSheet(
         group: group,
+        shared: ref.read(authProvider).state.status == AuthStatus.authenticated,
         defaultPayerMemberId: myMemberId,
         onAdd: (expense) async {
           await provider.addGroupExpense(expense);
@@ -322,6 +334,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => AddGroupExpenseSheet(
         group: group,
+        shared: ref.read(authProvider).state.status == AuthStatus.authenticated,
         initial: expense,
         defaultPayerMemberId: myMemberId,
         onAdd: (updated) async {
@@ -459,6 +472,10 @@ class _RejectedMembersBanner extends StatelessWidget {
 class _GroupHeader extends StatelessWidget {
   final Group group;
 
+  /// False offline: show what was spent, not balances or settling up.
+  final bool shared;
+  final double totalSpent;
+
   /// Your net balance here; null while unknown or not a member.
   final double? myBalance;
   final bool showingBalances;
@@ -467,6 +484,8 @@ class _GroupHeader extends StatelessWidget {
 
   const _GroupHeader({
     required this.group,
+    required this.shared,
+    required this.totalSpent,
     required this.myBalance,
     required this.showingBalances,
     required this.onSettleUp,
@@ -512,7 +531,9 @@ class _GroupHeader extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '$members member${members == 1 ? '' : 's'}',
+                    shared
+                        ? '$members member${members == 1 ? '' : 's'}'
+                        : 'Just you · on this phone',
                     style: AppTextStyles.bodyMd.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -523,58 +544,98 @@ class _GroupHeader extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 16),
-        Text.rich(
-          TextSpan(
-            style: AppTextStyles.bodyLg.copyWith(color: color),
-            children: settled
-                ? const [TextSpan(text: 'You are all settled up here')]
-                : [
-                    TextSpan(
-                      text: balance > 0 ? 'You are owed ' : 'You owe ',
-                    ),
-                    TextSpan(
-                      text: formatRupees(balance.abs()),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const TextSpan(text: ' overall'),
-                  ],
+        if (!shared) ...[
+          Text.rich(
+            TextSpan(
+              style: AppTextStyles.bodyLg.copyWith(
+                color: AppColors.textPrimary,
+              ),
+              children: [
+                TextSpan(
+                  text: formatRupees(totalSpent),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const TextSpan(text: ' spent in this event'),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            FilledButton(
-              onPressed: onSettleUp,
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.outflow,
-                shape: const StadiumBorder(),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Icon(
+                Icons.lock_outline_rounded,
+                size: 16,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Sign in to add friends and split costs.',
+                  style: AppTextStyles.bodySm.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
-              child: const Text('Settle up'),
-            ),
-            const SizedBox(width: 10),
-            OutlinedButton.icon(
-              onPressed: onToggleBalances,
-              icon: Icon(
-                showingBalances
-                    ? Icons.receipt_long_outlined
-                    : Icons.balance_rounded,
-                size: 18,
+              TextButton(
+                onPressed: () => context.push('/login'),
+                child: const Text('Sign in'),
               ),
-              label: Text(showingBalances ? 'Expenses' : 'Balances'),
-              style: OutlinedButton.styleFrom(
-                shape: const StadiumBorder(),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 10,
+            ],
+          ),
+        ] else ...[
+          Text.rich(
+            TextSpan(
+              style: AppTextStyles.bodyLg.copyWith(color: color),
+              children: settled
+                  ? const [TextSpan(text: 'You are all settled up here')]
+                  : [
+                      TextSpan(
+                        text: balance > 0 ? 'You are owed ' : 'You owe ',
+                      ),
+                      TextSpan(
+                        text: formatRupees(balance.abs()),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const TextSpan(text: ' overall'),
+                    ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              FilledButton(
+                onPressed: onSettleUp,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.outflow,
+                  shape: const StadiumBorder(),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
+                ),
+                child: const Text('Settle up'),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton.icon(
+                onPressed: onToggleBalances,
+                icon: Icon(
+                  showingBalances
+                      ? Icons.receipt_long_outlined
+                      : Icons.balance_rounded,
+                  size: 18,
+                ),
+                label: Text(showingBalances ? 'Expenses' : 'Balances'),
+                style: OutlinedButton.styleFrom(
+                  shape: const StadiumBorder(),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 10,
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ],
     );
   }

@@ -17,12 +17,17 @@ class AddGroupExpenseSheet extends StatefulWidget {
   /// An existing expense to edit; null to add a new one.
   final GroupExpense? initial;
 
+  /// False offline: the expense is just yours, so there's no payer or
+  /// split to choose.
+  final bool shared;
+
   const AddGroupExpenseSheet({
     super.key,
     required this.group,
     required this.onAdd,
     this.defaultPayerMemberId,
     this.initial,
+    this.shared = true,
   });
 
   @override
@@ -51,6 +56,11 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
     _payerMemberId =
         widget.defaultPayerMemberId ?? widget.group.members.first.id!;
     _includedMemberIds = widget.group.members.map((m) => m.id!).toSet();
+    // Offline, a new expense is all yours.
+    final me = widget.defaultPayerMemberId;
+    if (!widget.shared && me != null && _includedMemberIds.contains(me)) {
+      _includedMemberIds = {me};
+    }
     for (final m in widget.group.members) {
       _shareControllers[m.id!] = TextEditingController();
     }
@@ -273,8 +283,10 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _withLine(),
-                      const SizedBox(height: 20),
+                      if (widget.shared) ...[
+                        _withLine(),
+                        const SizedBox(height: 20),
+                      ],
                       ExpenseEntryFields(
                         descriptionController: _descController,
                         amountController: _amountController,
@@ -283,8 +295,10 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
                         accent: AppColors.outflow,
                         onAmountChanged: (_) => setState(() => _error = null),
                       ),
-                      const SizedBox(height: 20),
-                      _paidBySplitLine(),
+                      if (widget.shared) ...[
+                        const SizedBox(height: 20),
+                        _paidBySplitLine(),
+                      ],
                       const SizedBox(height: 24),
                       Text('Category', style: AppTextStyles.fieldLabel),
                       const SizedBox(height: 10),

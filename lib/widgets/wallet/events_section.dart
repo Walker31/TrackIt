@@ -18,7 +18,16 @@ class EventsSection extends StatefulWidget {
   /// Starts creating a new event.
   final VoidCallback? onCreate;
 
-  const EventsSection({super.key, required this.provider, this.onCreate});
+  /// Signed in: events can be shared, so rows show balances. Offline they
+  /// only group your own spending, so rows show what you spent.
+  final bool shared;
+
+  const EventsSection({
+    super.key,
+    required this.provider,
+    this.onCreate,
+    this.shared = true,
+  });
 
   @override
   State<EventsSection> createState() => _EventsSectionState();
@@ -26,17 +35,26 @@ class EventsSection extends StatefulWidget {
 
 class _EventsSectionState extends State<EventsSection> {
   List<Group>? _loadedFor;
-  late Future<List<double>> _balances;
+  bool? _loadedShared;
+  late Future<List<double>> _amounts;
 
-  /// Your balance in each event, refetched only when the list changes.
-  Future<List<double>> _balancesFor(List<Group> groups) {
-    if (!identical(groups, _loadedFor)) {
+  /// Your balance (shared) or total spent (offline) in each event,
+  /// refetched only when the list or the mode changes.
+  Future<List<double>> _amountsFor(List<Group> groups) {
+    if (!identical(groups, _loadedFor) || _loadedShared != widget.shared) {
       _loadedFor = groups;
-      _balances = Future.wait([
-        for (final g in groups) widget.provider.getMyBalance(g.id!),
+      _loadedShared = widget.shared;
+      final provider = widget.provider;
+      _amounts = Future.wait([
+        for (final g in groups)
+          widget.shared
+              ? provider.getMyBalance(g.id!)
+              : provider
+                    .getGroupExpenses(g.id!)
+                    .then((es) => es.fold<double>(0, (t, e) => t + e.amount)),
       ]);
     }
-    return _balances;
+    return _amounts;
   }
 
   @override
@@ -55,20 +73,23 @@ class _EventsSectionState extends State<EventsSection> {
       return EmptyState(
         icon: Icons.groups_outlined,
         title: 'No events yet',
-        message: 'Create one to split expenses with friends.',
+        message: widget.shared
+            ? 'Create one to split expenses with friends.'
+            : 'Group spending for an outing, a party or a project.',
         actionLabel: 'New event',
         onAction: widget.onCreate,
       );
     }
 
     return FutureBuilder<List<double>>(
-      future: _balancesFor(groups),
+      future: _amountsFor(groups),
       builder: (context, snapshot) {
         final balances = snapshot.data;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (balances != null) _OverallBalance(balances: balances),
+            if (balances != null && widget.shared)
+              _OverallBalance(balances: balances),
             FadeSlideIn(
               child: AppCard(
                 padding: EdgeInsets.zero,
@@ -79,6 +100,7 @@ class _EventsSectionState extends State<EventsSection> {
                       GroupCard(
                         group: groups[i],
                         myBalance: balances?[i] ?? 0,
+                        shared: widget.shared,
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) =>
