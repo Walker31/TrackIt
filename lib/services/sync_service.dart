@@ -67,6 +67,9 @@ class SyncService {
   /// successful pull of [entity]. A server that ignores `updated_after` just
   /// returns everything, which the merge logic handles.
   Future<List<dynamic>> _fetchAll(String path, String entity) async {
+    // Every pull sits in a try that saves its cursor only after merging, so
+    // skipping here leaves the cursor where it was and nothing is missed.
+    if (!_pullThisPass) throw const _PullSkipped();
     final since = await _cursor(entity);
     final items = <dynamic>[];
     String? url = path;
@@ -133,35 +136,124 @@ class SyncService {
   /// and both insert the same pulled rows (duplicates). A call made mid-run
   /// queues one more pass and completes only after it, so awaiting callers
   /// always see fresh data.
-  Future<void> performSync() {
+  ///
+  /// [forcePull] fetches from the server even if it did so moments ago (app
+  /// start, pull-to-refresh, "Sync now"); otherwise an edit only pushes,
+  /// plus a pull when the last one is older than [_pullInterval].
+  Future<void> performSync({bool forcePull = false}) {
     // Local mode never talks to a server.
     if (!AppModeService.isServer) return Future.value();
+    if (forcePull) _forcePull = true;
     return _runner.run();
   }
 
+  /// Edits push straight away, but pulling every entity after each one
+  /// costs ~10 requests; pulls run at most this often unless forced.
+  static const _pullInterval = Duration(minutes: 2);
+  DateTime? _lastPull;
+  bool _forcePull = false;
+  bool _pullThisPass = true;
+
   Future<void> _syncPass() async {
     if (!await isOnline()) return;
-    await _runSync();
+    final started = DateTime.now();
+    final last = _lastPull;
+    _pullThisPass =
+        _forcePull || last == null || started.difference(last) >= _pullInterval;
+    _forcePull = false;
+    final ok = await _runSync();
+    if (_pullThisPass) _lastPull = started;
+    if (ok) await _recordSuccess();
     _syncComplete.add(null);
   }
 
-  Future<void> _runSync() async {
-    debugPrint('Starting Sync...');
+  /// Settings key for the last sync that ran to the end. Not under the
+  /// `last_sync_` cursor prefix, so [resetCursors] leaves it alone.
+  static const _lastSuccessKey = 'sync_last_success';
+
+  Future<void> _recordSuccess() async {
+    final db = await _dbService.getDatabase();
+    await db.insert('settings', {
+      'key': _lastSuccessKey,
+      'value': DateTime.now().toUtc().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// When a sync last ran to the end on this device, or null if never.
+  static Future<DateTime?> lastSyncedAt() async {
+    final db = await DatabaseService().getDatabase();
+    final rows = await db.query(
+      'settings',
+      where: 'key = ?',
+      whereArgs: [_lastSuccessKey],
+    );
+    if (rows.isEmpty) return null;
+    return DateTime.tryParse(rows.first['value'] as String? ?? '')?.toLocal();
+  }
+
+  /// Local changes the server doesn't have yet: unsynced rows of every
+  /// entity the sync pushes, plus queued deletes. Exercises and sets ride
+  /// along with their workout; members the server rejected never upload.
+  static Future<int> pendingChanges() async {
+    final db = await DatabaseService().getDatabase();
+    const tables = [
+      'expenses',
+      'workouts',
+      'routines',
+      'budgets',
+      'events',
+      'groups',
+      'group_expenses',
+      'settlements',
+    ];
+    Future<int> count(String sql) async {
+      final rows = await db.rawQuery(sql);
+      return (rows.first['c'] as int?) ?? 0;
+    }
+
+    var total = 0;
+    for (final table in tables) {
+      total += await count(
+        'SELECT COUNT(*) AS c FROM $table WHERE is_synced = 0',
+      );
+    }
+    total += await count(
+      'SELECT COUNT(*) AS c FROM group_members '
+      'WHERE is_synced = 0 AND sync_error IS NULL',
+    );
+    return total + await SyncOutbox.pendingCount();
+  }
+
+  /// True if the pass ran to the end (individual rows may still have
+  /// failed and stay unsynced; [pendingChanges] counts those).
+  Future<bool> _runSync() async {
+    debugPrint('Starting Sync (pull: $_pullThisPass)...');
     try {
       // Replay queued deletes first so the pulls below can't resurrect them.
       await SyncOutbox.drain(_apiService);
-      await _syncCatalog(); // categories/events first: transactions reference them
-      await _syncBudgets();
-      await _syncExpenses();
-      await _syncWorkouts();
-      await _syncRoutines();
-      await _syncGroups();
-      await _syncGroupMembers();
-      await _syncGroupExpenses();
-      await _syncSettlements();
+      // Chains that don't depend on each other run side by side; within a
+      // chain, order matters (transactions reference categories, members
+      // reference groups, and so on).
+      await Future.wait([
+        () async {
+          await _syncCatalog();
+          await _syncBudgets();
+          await _syncExpenses();
+        }(),
+        _syncWorkouts(),
+        _syncRoutines(),
+        () async {
+          await _syncGroups();
+          await _syncGroupMembers();
+          await _syncGroupExpenses();
+          await _syncSettlements();
+        }(),
+      ]);
       debugPrint('Sync Completed successfully.');
+      return true;
     } catch (e) {
       debugPrint('Sync Failed: $e');
+      return false;
     }
   }
 
@@ -1161,6 +1253,18 @@ class SyncService {
       );
 
       if (existing.isNotEmpty) {
+        // A guest may since have been linked to an account (here or on
+        // another device): take the server's name and account.
+        await db.update(
+          'group_members',
+          {
+            'user_id': m['user'],
+            'username': m['username'],
+            'is_guest': m['is_guest'] == true ? 1 : 0,
+          },
+          where: 'id = ?',
+          whereArgs: [existing.first['id']],
+        );
         continue;
       }
 
@@ -1189,6 +1293,7 @@ class SyncService {
             'is_synced': 1,
             'user_id': m['user'],
             'username': m['username'],
+            'is_guest': m['is_guest'] == true ? 1 : 0,
           },
           where: 'id = ?',
           whereArgs: [localMatch.first['id']],
@@ -1201,7 +1306,8 @@ class SyncService {
           'user_id': m['user'],
           'username': m['username'],
           'email': m['email'],
-          'role': m['role'],
+          'role': m['role'] ?? 'member',
+          'is_guest': m['is_guest'] == true ? 1 : 0,
           'is_synced': 1,
         });
       }
@@ -1227,7 +1333,9 @@ class SyncService {
       try {
         final response = await _apiService.post(
           'groups/groups/$groupRemoteId/add-member/',
-          data: {'username': map['username']},
+          data: map['is_guest'] == 1
+              ? {'guest_name': map['username']}
+              : {'username': map['username']},
         );
         await db.update(
           'group_members',
@@ -1667,4 +1775,12 @@ class SyncService {
       debugPrint('Failed to fetch settlements from remote: $e');
     }
   }
+}
+
+/// Thrown by [SyncService._fetchAll] when this pass only pushes.
+class _PullSkipped implements Exception {
+  const _PullSkipped();
+
+  @override
+  String toString() => 'pull skipped (pulled recently)';
 }

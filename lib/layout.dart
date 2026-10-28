@@ -121,7 +121,7 @@ class _LayoutState extends State<Layout> {
     final isDark = AppColors.isDark;
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: AppColors.surface,
         border: Border(
           top: BorderSide(
             color: isDark

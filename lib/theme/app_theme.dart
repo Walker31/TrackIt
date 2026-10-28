@@ -27,9 +27,9 @@ class AppTheme {
 
   static ThemeData _build(Brightness brightness) {
     final dark = brightness == Brightness.dark;
-    // Accent for text and outlines; fills keep the brand indigo.
-    final primary = dark ? AppColors.darkAccent : AppColors.brand;
-    final fill = dark ? AppColors.darkAccentFill : AppColors.brand;
+    // Accent for text and outlines; fills use the Splitwise teal.
+    final primary = dark ? AppColors.darkAccent : AppColors.lightAccent;
+    const fill = AppColors.brand;
     final background = dark
         ? AppColors.darkBackground
         : AppColors.lightBackground;
@@ -64,8 +64,8 @@ class AppTheme {
         seedColor: fill,
         brightness: brightness,
         primary: primary,
-        onPrimary: dark ? const Color(0xFF06231C) : Colors.white,
-        secondary: dark ? AppColors.darkIncome : AppColors.secondary,
+        onPrimary: Colors.white,
+        secondary: dark ? AppColors.darkIncome : AppColors.lightIncome,
         surface: surface,
         onSurface: textPrimary,
         onSurfaceVariant: textSecondary,

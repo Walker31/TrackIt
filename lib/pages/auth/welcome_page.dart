@@ -15,7 +15,7 @@ class WelcomePage extends ConsumerWidget {
 
   static const _features = [
     (Icons.account_balance_wallet_outlined, 'Track spending and budgets'),
-    (Icons.groups_outlined, 'Split costs with friends'),
+    (Icons.groups_outlined, 'Split costs with friends (with an account)'),
     (Icons.fitness_center_rounded, 'Log workouts set by set'),
   ];
 

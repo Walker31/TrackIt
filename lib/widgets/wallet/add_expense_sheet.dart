@@ -13,9 +13,8 @@ import '../app_button.dart';
 import '../../models/expenses.dart';
 import '../../utils/format.dart';
 
-/// Bottom-sheet transaction entry: amount -> category grid -> optional
-/// subcategory / date / payment method / event / note (per the PaisaPulse
-/// blueprint).
+/// Bottom-sheet transaction entry: type toggle, a large amount and note,
+/// the category grid, then optional subcategory / date / payment / trip.
 class AddExpenseSheet extends StatefulWidget {
   final Function(Expense) onAdd;
 
@@ -257,7 +256,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   @override
   Widget build(BuildContext context) {
     final isIncome = _type == TxnType.income;
-    final accent = isIncome ? AppColors.income : AppColors.expense;
+    final accent = isIncome ? AppColors.income : AppColors.outflow;
     final media = MediaQuery.of(context);
     final amount = _amount;
 
@@ -274,40 +273,29 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
             children: [
               const _DragHandle(),
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 8, 12, 0),
+                padding: const EdgeInsets.fromLTRB(24, 10, 12, 0),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
-                        transitionBuilder: _fadeSlide,
-                        layoutBuilder: _alignStart,
-                        child: Text(
-                          '${_editing ? 'Edit' : 'Add'} '
-                          '${isIncome ? 'income' : 'expense'}',
-                          key: ValueKey(_type),
-                          style: AppTextStyles.h2,
-                        ),
+                    SizedBox(
+                      width: 220,
+                      child: AnimatedSegmentedTabs(
+                        labels: const ['Expense', 'Income'],
+                        selectedIndex: _type.index,
+                        onChanged: (i) => _setType(TxnType.values[i]),
                       ),
                     ),
+                    const Spacer(),
                     IconButton(
                       onPressed: () => Navigator.pop(context),
                       icon: const Icon(Icons.close_rounded),
+                      tooltip: 'Close',
                     ),
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-                child: AnimatedSegmentedTabs(
-                  labels: const ['Expense', 'Income'],
-                  selectedIndex: _type.index,
-                  onChanged: (i) => _setType(TxnType.values[i]),
-                ),
-              ),
               Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -358,7 +346,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                               ),
                       ),
                       const SizedBox(height: 24),
-                      FadeSlideIn(index: 2, child: _detailsCard()),
+                      FadeSlideIn(index: 2, child: _details()),
                     ],
                   ),
                 ),
@@ -419,62 +407,70 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
     );
   }
 
-  Widget _detailsCard() {
-    return _section(
-      'Details',
-      Container(
-        decoration: BoxDecoration(
-          color: AppColors.inputFill,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          children: [
-            _DetailRow(
+  Widget _details() {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final yesterday = today.subtract(const Duration(days: 1));
+    final day = DateUtils.dateOnly(_date);
+    final otherDay = day != today && day != yesterday;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _section(
+          'Date',
+          _chipRow([
+            _SelectChip(
+              label: 'Today',
+              selected: day == today,
+              onTap: () => setState(() => _date = today),
+            ),
+            _SelectChip(
+              label: 'Yesterday',
+              selected: day == yesterday,
+              onTap: () => setState(() => _date = yesterday),
+            ),
+            _SelectChip(
+              label: otherDay ? _dateLabel : 'Pick a date',
               icon: Icons.calendar_today_rounded,
-              label: 'Date',
-              trailing: TapScale(
-                onTap: _pickDate,
-                child: _Pill(text: _dateLabel, icon: Icons.expand_more_rounded),
-              ),
+              selected: otherDay,
+              onTap: _pickDate,
             ),
-            _divider(),
-            _DetailRow(
-              icon: Icons.payments_outlined,
-              label: 'Paid with',
-              child: _chipRow([
-                for (final p in PaymentMethod.values)
-                  _SelectChip(
-                    label: p.label,
-                    icon: p.icon,
-                    selected: _payment == p,
-                    onTap: () =>
-                        setState(() => _payment = _payment == p ? null : p),
-                  ),
-              ]),
-            ),
-            _divider(),
-            _DetailRow(
-              icon: Icons.luggage_outlined,
-              label: 'Trip',
-              child: _chipRow([
-                _SelectChip(
-                  label: 'New',
-                  icon: Icons.add_rounded,
-                  selected: false,
-                  onTap: _createEvent,
-                ),
-                for (final e in _events)
-                  _SelectChip(
-                    label: e.title,
-                    selected: _event?.id == e.id,
-                    onTap: () =>
-                        setState(() => _event = _event?.id == e.id ? null : e),
-                  ),
-              ]),
-            ),
-          ],
+          ]),
         ),
-      ),
+        const SizedBox(height: 20),
+        _section(
+          'Paid with',
+          _chipRow([
+            for (final p in PaymentMethod.values)
+              _SelectChip(
+                label: p.label,
+                icon: p.icon,
+                selected: _payment == p,
+                onTap: () =>
+                    setState(() => _payment = _payment == p ? null : p),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 20),
+        _section(
+          'Trip',
+          _chipRow([
+            for (final e in _events)
+              _SelectChip(
+                label: e.title,
+                selected: _event?.id == e.id,
+                onTap: () =>
+                    setState(() => _event = _event?.id == e.id ? null : e),
+              ),
+            _SelectChip(
+              label: 'New trip',
+              icon: Icons.add_rounded,
+              selected: false,
+              onTap: _createEvent,
+            ),
+          ]),
+        ),
+      ],
     );
   }
 
@@ -539,13 +535,6 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
     ],
   );
 
-  Widget _divider() => Divider(
-    height: 1,
-    indent: 16,
-    endIndent: 16,
-    color: AppColors.textTertiary.withValues(alpha: 0.15),
-  );
-
   Widget _chipRow(List<Widget> chips) => SizedBox(
     height: 38,
     child: ListView.separated(
@@ -586,79 +575,6 @@ class _DragHandle extends StatelessWidget {
           color: AppColors.textTertiary.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(2),
         ),
-      ),
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Widget? trailing;
-  final Widget? child;
-
-  const _DetailRow({
-    required this.icon,
-    required this.label,
-    this.trailing,
-    this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: AppColors.textSecondary),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  label,
-                  style: AppTextStyles.bodyMd.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              ?trailing,
-            ],
-          ),
-          if (child != null) ...[const SizedBox(height: 10), child!],
-        ],
-      ),
-    );
-  }
-}
-
-class _Pill extends StatelessWidget {
-  final String text;
-  final IconData icon;
-  const _Pill({required this.text, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 180),
-            child: Text(
-              text,
-              key: ValueKey(text),
-              style: AppTextStyles.bodySm.copyWith(fontWeight: FontWeight.w600),
-            ),
-          ),
-          Icon(icon, size: 18, color: AppColors.textSecondary),
-        ],
       ),
     );
   }
@@ -771,7 +687,7 @@ class _CategoryTile extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.fromLTRB(4, 12, 4, 10),
+        padding: const EdgeInsets.fromLTRB(4, 10, 4, 8),
         decoration: BoxDecoration(
           color: selected ? color.withValues(alpha: 0.12) : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
@@ -788,8 +704,8 @@ class _CategoryTile extends StatelessWidget {
               curve: Curves.easeOutBack,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
-                width: 44,
-                height: 44,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
                   color: selected ? color : color.withValues(alpha: 0.12),
                   shape: BoxShape.circle,

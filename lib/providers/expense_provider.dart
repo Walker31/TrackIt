@@ -4,13 +4,13 @@ import 'package:flutter/services.dart';
 import '../models/expenses.dart';
 import '../services/catalog_service.dart';
 import '../services/expense_service.dart';
-import '../services/notification_service.dart';
+import '../services/budget_alert_service.dart';
 import '../services/sync_service.dart';
-import '../utils/format.dart';
 
 class ExpenseProvider extends ChangeNotifier {
   final ExpenseService _service = ExpenseService();
   final CatalogService _catalog = CatalogService();
+  final BudgetAlertService _budgetAlerts = BudgetAlertService();
 
   List<Expense> _expenses = [];
   DailyExpenseSummary? _todaySummary;
@@ -93,22 +93,28 @@ class ExpenseProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
-    await SyncService().performSync();
+    await SyncService().performSync(forcePull: true);
   }
 
   /// Re-read today's and this month's figures from the local database.
   Future<void> _reload({bool notify = true}) async {
     try {
       final now = DateTime.now();
-      _expenses = await _service.getExpensesByDate(now);
-      _todaySummary = await _service.getDailySummary(now);
-      _monthlySpent = await _service.getMonthlyTotal(now.year, now.month);
-      _monthlyBudget = await _service.getMonthlyBudget();
-      _monthExpenses = await _service.getExpensesByMonth(
-        _selectedMonth.year,
-        _selectedMonth.month,
-      );
-      _categories = {for (final c in await _catalog.getCategories()) c.id: c};
+      // Independent reads: issue them together rather than one by one.
+      final (expenses, summary, spent, budget, month, categories) = await (
+        _service.getExpensesByDate(now),
+        _service.getDailySummary(now),
+        _service.getMonthlyTotal(now.year, now.month),
+        _service.getMonthlyBudget(),
+        _service.getExpensesByMonth(_selectedMonth.year, _selectedMonth.month),
+        _catalog.getCategories(),
+      ).wait;
+      _expenses = expenses;
+      _todaySummary = summary;
+      _monthlySpent = spent;
+      _monthlyBudget = budget;
+      _monthExpenses = month;
+      _categories = {for (final c in categories) c.id: c};
     } catch (e) {
       debugPrint('Error refreshing expenses: $e');
     }
@@ -120,31 +126,26 @@ class ExpenseProvider extends ChangeNotifier {
     await _service.addExpense(expense);
     await _reload();
     HapticFeedback.lightImpact();
-
-    // Budget Alert
-    if (_monthlySpent > _monthlyBudget) {
-      NotificationService().showNotification(
-        id: 100,
-        title: "Budget Alert!",
-        body:
-            "You've exceeded your monthly budget of ${formatRupees(_monthlyBudget)}",
-      );
-    }
+    unawaited(_budgetAlerts.check());
   }
 
   Future<void> updateExpense(Expense expense) async {
     await _service.updateExpense(expense);
     await _reload();
+    unawaited(_budgetAlerts.check());
   }
 
   Future<void> deleteExpense(int id) async {
     await _service.deleteExpense(id);
     await _reload();
+    // Spending went down: lets a line crossed again warn again.
+    unawaited(_budgetAlerts.check());
   }
 
   Future<void> updateBudget(double amount) async {
     await _service.setMonthlyBudget(amount);
     await _reload();
+    unawaited(_budgetAlerts.check());
   }
 
   Future<List<Expense>> getExpensesForDate(DateTime date) async {

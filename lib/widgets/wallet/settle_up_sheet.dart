@@ -7,6 +7,7 @@ import '../animated/animated_segmented_tabs.dart';
 import '../glass_container.dart';
 import '../app_button.dart';
 import '../ledger_row.dart' show formatRupees;
+import '../../utils/simplify_debts.dart';
 
 /// Which way the money went, from the viewer's side.
 enum SettleDirection { iPaid, iReceived }
@@ -42,6 +43,10 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
   // Keep suggesting amounts until the user types their own.
   bool _amountEdited = false;
 
+  /// The fewest payments that settle the whole group; suggestions come
+  /// from the ones that involve the viewer.
+  late final List<SuggestedPayment> _plan = simplifyDebts(widget.balances);
+
   double _balanceFor(int memberId) {
     final match = widget.balances.where((b) => b.memberId == memberId);
     return match.isEmpty ? 0.0 : match.first.balance;
@@ -71,28 +76,32 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
     super.dispose();
   }
 
+  /// The planned payment between me and [other] in the chosen direction.
+  SuggestedPayment? _planned(int other) {
+    final me = widget.currentMemberId;
+    final (from, to) = _direction == SettleDirection.iPaid
+        ? (me, other)
+        : (other, me);
+    return _plan.where((p) => p.from == from && p.to == to).firstOrNull;
+  }
+
+  /// Whoever the simplified plan has me paying (or being paid by) the most;
+  /// failing that, the first other member.
   GroupMember? _suggestedOther() {
     final others = _others;
     if (others.isEmpty) return null;
-    others.sort((a, b) => _balanceFor(a.id!).compareTo(_balanceFor(b.id!)));
-    // Receiving: most negative balance owes the most. Paying: most positive.
-    return _direction == SettleDirection.iReceived ? others.first : others.last;
+    others.sort(
+      (a, b) => (_planned(b.id!)?.amount ?? 0).compareTo(
+        _planned(a.id!)?.amount ?? 0,
+      ),
+    );
+    return others.first;
   }
 
-  /// What's outstanding between me and [_otherId] in the chosen direction:
-  /// the smaller of what I'm owed (or owe) and what they owe (or are owed).
+  /// What the simplified plan says passes between me and [_otherId].
   double get _suggested {
     final other = _otherId;
-    if (other == null) return 0;
-    final mine = _myBalance;
-    final theirs = _balanceFor(other);
-    return switch (_direction) {
-      SettleDirection.iReceived when mine > 0 && theirs < 0 =>
-        mine < -theirs ? mine : -theirs,
-      SettleDirection.iPaid when mine < 0 && theirs > 0 =>
-        -mine < theirs ? -mine : theirs,
-      _ => 0,
-    };
+    return other == null ? 0 : _planned(other)?.amount ?? 0;
   }
 
   void _suggestAmount() {

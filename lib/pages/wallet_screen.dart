@@ -9,6 +9,7 @@ import '../widgets/page_header.dart';
 import '../widgets/section_header.dart';
 import '../widgets/glass_container.dart';
 import '../providers/app_providers.dart';
+import '../providers/auth_provider.dart';
 import '../providers/expense_provider.dart';
 import '../models/expenses.dart';
 import '../widgets/wallet/financial_analysis_card.dart';
@@ -45,6 +46,10 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
   Widget build(BuildContext context) {
     final provider = ref.watch(expenseProviderProvider);
     final groupProvider = ref.watch(groupProviderProvider);
+    // Events work offline as a way to group spending; sharing and
+    // splitting them needs an account.
+    final signedIn =
+        ref.watch(authProvider).state.status == AuthStatus.authenticated;
 
     return Scaffold(
       body: CustomScrollView(
@@ -123,6 +128,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                         : EventsSection(
                             key: const ValueKey('events'),
                             provider: groupProvider,
+                            shared: signedIn,
                             onCreate: () => _showCreateGroupSheet(context),
                           ),
                   ),
@@ -275,9 +281,13 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
         onCreate: (name, icon) async {
           await provider.createGroup(name, icon);
           if (!mounted) return;
+          final signedIn =
+              ref.read(authProvider).state.status == AuthStatus.authenticated;
           AppSnackbar.success(
             this.context,
-            'Event "$name" created. Add members to start splitting.',
+            signedIn
+                ? 'Event "$name" created. Add members to start splitting.'
+                : 'Event "$name" created. Add expenses to it with +.',
             aboveNav: true,
           );
         },

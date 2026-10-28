@@ -58,8 +58,22 @@ class GroupProvider extends ChangeNotifier {
     await refreshGroups();
   }
 
-  Future<void> addMember(int groupId, String username) async {
-    await _service.addMember(groupId, username);
+  Future<void> addMember(
+    int groupId,
+    String username, {
+    bool guest = false,
+  }) async {
+    await _service.addMember(groupId, username, guest: guest);
+    await refreshGroups();
+  }
+
+  Future<void> addRejectedAsGuests(int groupId) async {
+    await _service.addRejectedAsGuests(groupId);
+    await refreshGroups();
+  }
+
+  Future<void> linkGuest(GroupMember guest, String username) async {
+    await _service.linkGuest(guest, username);
     await refreshGroups();
   }
 
@@ -116,13 +130,9 @@ class GroupProvider extends ChangeNotifier {
   /// Net balance for the current user across all groups (positive = owed
   /// to them). Used for an at-a-glance summary on the Events tab.
   Future<double> getMyBalance(int groupId) async {
+    // Balances already carry each member's username; no second group read.
+    final me = currentUsername ?? localUsername;
     final balances = await getBalances(groupId);
-    final group = await _service.getGroup(groupId);
-    final myMember = group.members
-        .where((m) => m.username == (currentUsername ?? localUsername))
-        .toList();
-    if (myMember.isEmpty) return 0.0;
-    final myBalance = balances.where((b) => b.memberId == myMember.first.id);
-    return myBalance.isEmpty ? 0.0 : myBalance.first.balance;
+    return balances.where((b) => b.username == me).firstOrNull?.balance ?? 0.0;
   }
 }

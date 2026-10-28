@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+import 'api_service.dart';
 import 'database_service.dart';
 import 'sync_outbox.dart';
 import 'sync_service.dart';
@@ -45,9 +47,14 @@ class GroupService {
     return getGroup(groupId);
   }
 
-  /// Queue adding an existing user (by username) to a group. Requires the
-  /// group to eventually sync before the invite reaches the server.
-  Future<void> addMember(int groupId, String username) async {
+  /// Queue adding someone to a group: an existing user by username, or
+  /// with [guest] someone without an account, by name. Requires the group
+  /// to eventually sync before the invite reaches the server.
+  Future<void> addMember(
+    int groupId,
+    String username, {
+    bool guest = false,
+  }) async {
     final db = await _dbService.getDatabase();
 
     final existing = await db.query(
@@ -64,21 +71,83 @@ class GroupService {
       'group_id': groupId,
       'username': username,
       'role': 'member',
+      'is_guest': guest ? 1 : 0,
       'is_synced': 0,
     });
 
     _syncService.performSync();
   }
 
+  /// Members the server refused because no account has that username:
+  /// re-add them as guests, so they (and expenses shared with them) sync.
+  Future<void> addRejectedAsGuests(int groupId) async {
+    final db = await _dbService.getDatabase();
+    await db.update(
+      'group_members',
+      {'is_guest': 1, 'sync_error': null, 'is_synced': 0},
+      where: 'group_id = ? AND sync_error IS NOT NULL AND remote_id IS NULL',
+      whereArgs: [groupId],
+    );
+    _syncService.performSync();
+  }
+
+  /// Attach the account [username] to a guest member. Needs the server,
+  /// so the guest must already be synced; their expenses and settlements
+  /// stay with them.
+  Future<void> linkGuest(GroupMember guest, String username) async {
+    final db = await _dbService.getDatabase();
+    final groups = await db.query(
+      'groups',
+      columns: ['remote_id'],
+      where: 'id = ?',
+      whereArgs: [guest.groupId],
+    );
+    final groupRemoteId = groups.firstOrNull?['remote_id'];
+    if (groupRemoteId == null || guest.remoteId == null) {
+      throw StateError('Sync first, then try again.');
+    }
+
+    final Response response;
+    try {
+      response = await ApiService().post(
+        'groups/groups/$groupRemoteId/link-member/',
+        data: {'member': guest.remoteId, 'username': username},
+      );
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      final reason = data is Map
+          ? (data['username'] is List
+                ? (data['username'] as List).join(' ')
+                : data['detail']?.toString())
+          : null;
+      throw StateError(reason ?? "Couldn't reach the server. Try again.");
+    }
+    await db.update(
+      'group_members',
+      {
+        'username': response.data['username'],
+        'user_id': response.data['user'],
+        'email': response.data['email'],
+        'is_guest': 0,
+      },
+      where: 'id = ?',
+      whereArgs: [guest.id],
+    );
+  }
+
   Future<List<Group>> getAllGroups() async {
     final db = await _dbService.getDatabase();
     final groupMaps = await db.query('groups', orderBy: 'created_at DESC');
 
-    final groups = <Group>[];
-    for (final map in groupMaps) {
-      groups.add(await _hydrateGroup(map));
+    // One query for every group's members rather than one per group.
+    final membersByGroup = <Object?, List<GroupMember>>{};
+    for (final m in await db.query('group_members')) {
+      (membersByGroup[m['group_id']] ??= []).add(GroupMember.fromMap(m));
     }
-    return groups;
+    return [
+      for (final map in groupMaps)
+        Group.fromMap(map, members: membersByGroup[map['id']] ?? []),
+    ];
   }
 
   Future<Group> getGroup(int groupId) async {
@@ -111,17 +180,20 @@ class GroupService {
       orderBy: 'timestamp DESC',
     );
 
-    final expenses = <GroupExpense>[];
-    for (final map in maps) {
-      final splitMaps = await db.query(
-        'group_expense_splits',
-        where: 'expense_id = ?',
-        whereArgs: [map['id']],
-      );
-      final splits = splitMaps.map((s) => ExpenseSplit.fromMap(s)).toList();
-      expenses.add(GroupExpense.fromMap(map, splits: splits));
+    // Every split in the group in one query, rather than one per expense.
+    final splitMaps = await db.rawQuery(
+      'SELECT s.* FROM group_expense_splits s '
+      'JOIN group_expenses e ON e.id = s.expense_id WHERE e.group_id = ?',
+      [groupId],
+    );
+    final splitsByExpense = <Object?, List<ExpenseSplit>>{};
+    for (final s in splitMaps) {
+      (splitsByExpense[s['expense_id']] ??= []).add(ExpenseSplit.fromMap(s));
     }
-    return expenses;
+    return [
+      for (final map in maps)
+        GroupExpense.fromMap(map, splits: splitsByExpense[map['id']] ?? []),
+    ];
   }
 
   /// Add a group expense with pre-computed splits (offline-first).
@@ -258,9 +330,11 @@ class GroupService {
   /// they owe the group. Mirrors the server's `balances` calculation so
   /// both sides always agree.
   Future<List<MemberBalance>> getBalances(int groupId) async {
-    final group = await getGroup(groupId);
-    final expenses = await getGroupExpenses(groupId);
-    final settlements = await getSettlements(groupId);
+    final (group, expenses, settlements) = await (
+      getGroup(groupId),
+      getGroupExpenses(groupId),
+      getSettlements(groupId),
+    ).wait;
 
     final balances = <int, double>{for (final m in group.members) m.id!: 0.0};
 
