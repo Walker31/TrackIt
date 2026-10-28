@@ -1,12 +1,17 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../providers/app_providers.dart';
 import '../providers/auth_provider.dart';
 import '../services/app_mode_service.dart';
-import '../services/sync_outbox.dart';
+import '../services/backup_service.dart';
 import '../services/sync_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
@@ -19,7 +24,8 @@ import '../widgets/app_snackbar.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/glass_container.dart';
 
-/// Settings as grouped rows: account, appearance, budget, data & sync.
+/// Settings as grouped rows: account, appearance, budget, data & sync,
+/// backup.
 /// Values that need typing open a sheet instead of sitting inline.
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -30,6 +36,28 @@ class SettingsPage extends ConsumerStatefulWidget {
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _syncing = false;
+  bool _busyBackup = false;
+
+  /// Last finished sync and changes still waiting to upload.
+  late Future<(DateTime?, int)> _status = _loadStatus();
+  StreamSubscription<void>? _syncSub;
+
+  static Future<(DateTime?, int)> _loadStatus() =>
+      (SyncService.lastSyncedAt(), SyncService.pendingChanges()).wait;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncSub = SyncService().onSyncComplete.listen((_) {
+      if (mounted) setState(() => _status = _loadStatus());
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncSub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,42 +87,27 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ),
       ]),
       _section('Data & sync', [
-        _SettingsTile(
-          icon: isLocal
-              ? Icons.phone_android_rounded
-              : Icons.cloud_done_outlined,
-          iconColor: isLocal ? AppColors.textSecondary : AppColors.income,
-          title: isLocal ? 'Stored on this device' : 'Synced with your server',
-          subtitle: isLocal
-              ? 'Nothing leaves your phone'
-              : 'Saved here first, synced when online',
-          showChevron: false,
-        ),
-        if (isLocal)
+        if (isLocal) ...[
+          _SettingsTile(
+            icon: Icons.phone_android_rounded,
+            iconColor: AppColors.textSecondary,
+            title: 'Stored on this device',
+            subtitle: 'Nothing leaves your phone',
+            showChevron: false,
+          ),
           _SettingsTile(
             icon: Icons.cloud_outlined,
             title: 'Connect to a server',
             subtitle: 'Back up, sync and split costs with friends',
             accent: true,
             onTap: () => context.push('/login'),
-          )
-        else ...[
+          ),
+        ] else ...[
+          _syncStatusTile(),
           _SettingsTile(
             icon: Icons.sync_rounded,
             title: 'Sync now',
-            subtitleWidget: FutureBuilder<int>(
-              future: SyncOutbox.pendingCount(),
-              builder: (context, snapshot) {
-                final pending = snapshot.data ?? 0;
-                return Text(
-                  pending == 0
-                      ? 'Everything is up to date'
-                      : '$pending deletion${pending == 1 ? '' : 's'} '
-                            'waiting to sync',
-                  style: _SettingsTile.subtitleStyle,
-                );
-              },
-            ),
+            subtitle: 'Upload changes and fetch new data',
             trailing: _syncing
                 ? const SizedBox(
                     width: 18,
@@ -111,6 +124,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onTap: _switchToLocal,
           ),
         ],
+      ]),
+      _section('Backup', [
+        _SettingsTile(
+          icon: Icons.download_rounded,
+          title: 'Download backup',
+          subtitle: 'Save all your data to a file',
+          onTap: _busyBackup ? null : _exportBackup,
+        ),
+        _SettingsTile(
+          icon: Icons.restore_rounded,
+          title: 'Restore from backup',
+          subtitle: "Replace this phone's data with a backup file",
+          onTap: _busyBackup ? null : _restoreBackup,
+        ),
       ]),
       if (auth.status == AuthStatus.authenticated)
         _section(null, [
@@ -294,34 +321,247 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
+  /// "Everything is uploaded" or "3 changes waiting to upload", with when
+  /// the last sync finished.
+  Widget _syncStatusTile() {
+    return FutureBuilder<(DateTime?, int)>(
+      future: _status,
+      builder: (context, snapshot) {
+        final (last, pending) = snapshot.data ?? (null, 0);
+        final waiting = pending > 0;
+        final when = last == null
+            ? 'Not synced yet'
+            : 'Last synced ${_ago(last)}';
+        return _SettingsTile(
+          icon: waiting
+              ? Icons.cloud_upload_outlined
+              : Icons.cloud_done_outlined,
+          iconColor: waiting ? AppColors.accent : AppColors.income,
+          title: waiting
+              ? '${_count(pending, 'change')} waiting to upload'
+              : 'Everything is uploaded',
+          subtitle: snapshot.hasData ? when : 'Checking…',
+          showChevron: false,
+        );
+      },
+    );
+  }
+
+  static String _ago(DateTime time) {
+    final diff = DateTime.now().difference(time);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+    if (diff.inHours < 24) return '${diff.inHours} h ago';
+    return 'on ${DateFormat('d MMM, h:mm a').format(time)}';
+  }
+
+  static String _count(int n, String noun) => '$n $noun${n == 1 ? '' : 's'}';
+
   Future<void> _syncNow() async {
     setState(() => _syncing = true);
     // Providers reload themselves when the sync completes.
     await SyncService().performSync(forcePull: true);
-    if (mounted) {
-      setState(() => _syncing = false);
-      AppSnackbar.success(context, 'Sync complete.');
+    final pending = await SyncService.pendingChanges();
+    if (!mounted) return;
+    setState(() => _syncing = false);
+    if (pending == 0) {
+      AppSnackbar.success(context, 'Everything is synced.');
+    } else {
+      AppSnackbar.warning(
+        context,
+        "${_count(pending, 'change')} couldn't upload. "
+        'Check your connection and try again.',
+      );
+    }
+  }
+
+  /// The signed-in username. Backups record it so a restore can tell
+  /// whether the data belongs to this account.
+  String? get _account {
+    final auth = ref.read(authProvider).state;
+    if (auth.status != AuthStatus.authenticated) return null;
+    return auth.user?['username']?.toString();
+  }
+
+  Future<void> _exportBackup() async {
+    setState(() => _busyBackup = true);
+    try {
+      final json = await BackupService().exportJson(account: _account);
+      final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final name = 'trackit-backup-$date.json';
+      final saved = await FilePicker.saveFile(
+        fileName: name,
+        bytes: utf8.encode(json),
+        mimeType: 'application/json',
+        dialogTitle: 'Save backup',
+      );
+      if (saved != null && mounted) {
+        AppSnackbar.success(context, 'Backup saved as $name.');
+      }
+    } catch (e) {
+      if (mounted) AppSnackbar.error(context, "Couldn't save the backup: $e");
+    } finally {
+      if (mounted) setState(() => _busyBackup = false);
+    }
+  }
+
+  Future<void> _restoreBackup() async {
+    final service = BackupService();
+    final String json;
+    final BackupSummary summary;
+    try {
+      // Any file type: downloaded JSON often arrives without its MIME type.
+      final file = await FilePicker.pickFile(dialogTitle: 'Choose a backup');
+      if (file == null) return;
+      json = await file.xFile.readAsString();
+      summary = service.inspect(json);
+    } on BackupException catch (e) {
+      if (mounted) AppSnackbar.error(context, e.message);
+      return;
+    } catch (e) {
+      if (mounted) AppSnackbar.error(context, "Couldn't read that file: $e");
+      return;
+    }
+    if (!mounted) return;
+
+    final made = summary.createdAt == null
+        ? ''
+        : ' from ${DateFormat('d MMM yyyy').format(summary.createdAt!.toLocal())}';
+    final contents =
+        '${_count(summary.transactions, 'transaction')} and '
+        '${_count(summary.workouts, 'workout')}';
+    final confirmed = await confirmDestructive(
+      context,
+      title: 'Restore this backup?',
+      message:
+          'It has $contents$made. Everything on this phone will be '
+          "replaced. This can't be undone.",
+      action: 'Restore',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _busyBackup = true);
+    try {
+      await service.restore(json, account: _account);
+      // Theme and budget came back with the data; reload what's cached.
+      await AppModeService().load();
+      ref.read(themeModeProvider.notifier).state = AppModeService.themeMode;
+      ref.invalidate(expenseProviderProvider);
+      ref.invalidate(workoutProviderProvider);
+      ref.invalidate(groupProviderProvider);
+      unawaited(SyncService().performSync(forcePull: true));
+      if (mounted) {
+        setState(() => _status = _loadStatus());
+        AppSnackbar.success(context, 'Restored $contents.');
+      }
+    } on BackupException catch (e) {
+      if (mounted) AppSnackbar.error(context, e.message);
+    } catch (e) {
+      if (mounted) {
+        AppSnackbar.error(
+          context,
+          "Couldn't restore the backup; nothing was changed. ($e)",
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busyBackup = false);
+    }
+  }
+
+  /// Before leaving server mode: if changes haven't reached the server,
+  /// say so and offer to sync first. True means go ahead.
+  Future<bool> _confirmLeavingServer({
+    required String title,
+    required String message,
+    required String action,
+  }) async {
+    final pending = await SyncService.pendingChanges();
+    if (!mounted) return false;
+    if (pending == 0) {
+      return confirmDestructive(
+        context,
+        title: title,
+        message: message,
+        action: action,
+      );
+    }
+
+    final choice = await showDialog<_UnsyncedChoice>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(
+          "${_count(pending, 'change')} haven't reached the server yet. "
+          "They stay on this phone, but other devices won't see them "
+          'until you sync.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, _UnsyncedChoice.cancel),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, _UnsyncedChoice.leave),
+            child: Text(
+              '$action anyway',
+              style: const TextStyle(color: AppColors.expense),
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, _UnsyncedChoice.syncFirst),
+            child: const Text('Sync first'),
+          ),
+        ],
+      ),
+    );
+
+    switch (choice) {
+      case _UnsyncedChoice.leave:
+        return true;
+      case _UnsyncedChoice.syncFirst:
+        setState(() => _syncing = true);
+        await SyncService().performSync();
+        final left = await SyncService.pendingChanges();
+        if (!mounted) return false;
+        setState(() => _syncing = false);
+        if (left == 0) return true;
+        AppSnackbar.warning(
+          context,
+          "${_count(left, 'change')} still couldn't upload. "
+          'Check your connection and try again.',
+        );
+        return false;
+      case _UnsyncedChoice.cancel:
+      case null:
+        return false;
     }
   }
 
   Future<void> _switchToLocal() async {
+    final go = await _confirmLeavingServer(
+      title: 'Use on this device only?',
+      message: 'Your data stays here; syncing stops until you sign in again.',
+      action: 'Switch',
+    );
+    if (!go || !mounted) return;
     await ref.read(authProvider).useLocalMode();
     if (mounted) AppSnackbar.info(context, 'Now using this device only.');
   }
 
   Future<void> _handleLogout() async {
-    final confirm = await confirmDestructive(
-      context,
+    final go = await _confirmLeavingServer(
       title: 'Log out?',
       message: 'Your data stays on this device. Sign in again to sync.',
       action: 'Log out',
     );
-    if (confirm && mounted) {
+    if (go && mounted) {
       AppSnackbar.info(context, 'You have been logged out.');
       await ref.read(authProvider).logout();
     }
   }
 }
+
+enum _UnsyncedChoice { cancel, syncFirst, leave }
 
 /// One settings row: tinted icon, title, optional subtitle and trailing.
 class _SettingsTile extends StatelessWidget {
@@ -329,7 +569,6 @@ class _SettingsTile extends StatelessWidget {
   final Color? iconColor;
   final String title;
   final String? subtitle;
-  final Widget? subtitleWidget;
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool showChevron;
@@ -343,7 +582,6 @@ class _SettingsTile extends StatelessWidget {
     required this.title,
     this.iconColor,
     this.subtitle,
-    this.subtitleWidget,
     this.trailing,
     this.onTap,
     this.showChevron = true,
@@ -380,9 +618,9 @@ class _SettingsTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title, style: titleStyle.copyWith(color: color)),
-                  if (subtitleWidget != null || subtitle != null) ...[
+                  if (subtitle != null) ...[
                     const SizedBox(height: 2),
-                    subtitleWidget ?? Text(subtitle!, style: subtitleStyle),
+                    Text(subtitle!, style: subtitleStyle),
                   ],
                 ],
               ),

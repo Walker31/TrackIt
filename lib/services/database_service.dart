@@ -11,6 +11,10 @@ import 'sync_outbox.dart';
 /// migrations so older installs can safely upgrade without losing data.
 class DatabaseService {
   static const int _databaseVersion = 6;
+
+  /// Schema version written into backups, so an older app can refuse a
+  /// backup made by a newer one.
+  static int get schemaVersion => _databaseVersion;
   static const String _databaseName = 'trackit.db';
   static const String _monthlyBudgetKey = 'monthly_budget';
   static const String _defaultMonthlyBudget = '50000';

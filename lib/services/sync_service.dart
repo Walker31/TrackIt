@@ -161,12 +161,72 @@ class SyncService {
     _pullThisPass =
         _forcePull || last == null || started.difference(last) >= _pullInterval;
     _forcePull = false;
-    await _runSync();
+    final ok = await _runSync();
     if (_pullThisPass) _lastPull = started;
+    if (ok) await _recordSuccess();
     _syncComplete.add(null);
   }
 
-  Future<void> _runSync() async {
+  /// Settings key for the last sync that ran to the end. Not under the
+  /// `last_sync_` cursor prefix, so [resetCursors] leaves it alone.
+  static const _lastSuccessKey = 'sync_last_success';
+
+  Future<void> _recordSuccess() async {
+    final db = await _dbService.getDatabase();
+    await db.insert('settings', {
+      'key': _lastSuccessKey,
+      'value': DateTime.now().toUtc().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// When a sync last ran to the end on this device, or null if never.
+  static Future<DateTime?> lastSyncedAt() async {
+    final db = await DatabaseService().getDatabase();
+    final rows = await db.query(
+      'settings',
+      where: 'key = ?',
+      whereArgs: [_lastSuccessKey],
+    );
+    if (rows.isEmpty) return null;
+    return DateTime.tryParse(rows.first['value'] as String? ?? '')?.toLocal();
+  }
+
+  /// Local changes the server doesn't have yet: unsynced rows of every
+  /// entity the sync pushes, plus queued deletes. Exercises and sets ride
+  /// along with their workout; members the server rejected never upload.
+  static Future<int> pendingChanges() async {
+    final db = await DatabaseService().getDatabase();
+    const tables = [
+      'expenses',
+      'workouts',
+      'routines',
+      'budgets',
+      'events',
+      'groups',
+      'group_expenses',
+      'settlements',
+    ];
+    Future<int> count(String sql) async {
+      final rows = await db.rawQuery(sql);
+      return (rows.first['c'] as int?) ?? 0;
+    }
+
+    var total = 0;
+    for (final table in tables) {
+      total += await count(
+        'SELECT COUNT(*) AS c FROM $table WHERE is_synced = 0',
+      );
+    }
+    total += await count(
+      'SELECT COUNT(*) AS c FROM group_members '
+      'WHERE is_synced = 0 AND sync_error IS NULL',
+    );
+    return total + await SyncOutbox.pendingCount();
+  }
+
+  /// True if the pass ran to the end (individual rows may still have
+  /// failed and stay unsynced; [pendingChanges] counts those).
+  Future<bool> _runSync() async {
     debugPrint('Starting Sync (pull: $_pullThisPass)...');
     try {
       // Replay queued deletes first so the pulls below can't resurrect them.
@@ -190,8 +250,10 @@ class SyncService {
         }(),
       ]);
       debugPrint('Sync Completed successfully.');
+      return true;
     } catch (e) {
       debugPrint('Sync Failed: $e');
+      return false;
     }
   }
 
