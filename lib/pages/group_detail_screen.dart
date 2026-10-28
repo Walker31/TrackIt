@@ -131,6 +131,7 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                       for (final m in group.members)
                         if (m.syncError != null) m.username,
                     ],
+                    onAddAsGuests: () => _addRejectedAsGuests(group),
                   ),
                   _GroupHeader(
                     group: group,
@@ -179,6 +180,13 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                             child: BalancesList(
                               balances: _balances,
                               currentMemberId: myMemberId ?? -1,
+                              guestIds: {
+                                for (final m in group.members)
+                                  if (m.isGuest) m.id!,
+                              },
+                              onLinkGuest: (id) => _linkGuest(
+                                group.members.firstWhere((m) => m.id == id),
+                              ),
                             ),
                           ),
                   ),
@@ -381,17 +389,97 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => AddMemberSheet(
-        onAdd: (username) async {
-          await provider.addMember(widget.groupId, username);
+        onAdd: (name, {required guest}) async {
+          await provider.addMember(widget.groupId, name, guest: guest);
           await _load();
           if (!mounted) return;
           AppSnackbar.success(
             this.context,
-            '$username added. They will see this event once synced.',
+            guest
+                ? '$name added. Link them to their account from Balances '
+                      'if they join TrackIt.'
+                : '$name added. They will see this event once synced.',
           );
         },
       ),
     );
+  }
+
+  Future<void> _addRejectedAsGuests(Group group) async {
+    await ref.read(groupProviderProvider).addRejectedAsGuests(group.id!);
+    await _load();
+    if (mounted) {
+      AppSnackbar.success(
+        context,
+        'Added as guests. Their expenses will sync now.',
+      );
+    }
+  }
+
+  /// A guest joined TrackIt: attach their account so the event and their
+  /// share show up for them.
+  Future<void> _linkGuest(GroupMember guest) async {
+    final controller = TextEditingController();
+    String? error;
+    final linked = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialog) => AlertDialog(
+          title: Text('Link ${guest.username} to an account'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'If ${guest.username} has joined TrackIt, enter their '
+                'username. They keep everything already shared with them.',
+                style: AppTextStyles.bodyMd.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                autocorrect: false,
+                decoration: InputDecoration(
+                  hintText: 'Their username',
+                  errorText: error,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final username = controller.text.trim();
+                if (username.isEmpty) return;
+                try {
+                  await ref
+                      .read(groupProviderProvider)
+                      .linkGuest(guest, username);
+                  if (dialogContext.mounted) {
+                    Navigator.pop(dialogContext, true);
+                  }
+                } on StateError catch (e) {
+                  setDialog(() => error = e.message);
+                }
+              },
+              child: const Text('Link'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (linked == true) {
+      await _load();
+      if (mounted) AppSnackbar.success(context, 'Account linked.');
+    }
   }
 
   void _showSettleUpSheet(BuildContext context, Group group, int myMemberId) {
@@ -430,7 +518,11 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
 /// account) stay on this device instead of syncing.
 class _RejectedMembersBanner extends StatelessWidget {
   final List<String> names;
-  const _RejectedMembersBanner({required this.names});
+  final VoidCallback onAddAsGuests;
+  const _RejectedMembersBanner({
+    required this.names,
+    required this.onAddAsGuests,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -450,15 +542,32 @@ class _RejectedMembersBanner extends StatelessWidget {
           const Icon(Icons.info_outline_rounded, color: AppColors.accent),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              names.length == 1
-                  ? "$who doesn't have a TrackIt account, so expenses "
-                        'shared with them stay on this device.'
-                  : "$who don't have TrackIt accounts, so expenses "
-                        'shared with them stay on this device.',
-              style: AppTextStyles.bodySm.copyWith(
-                color: AppColors.textPrimary,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  names.length == 1
+                      ? "$who doesn't have a TrackIt account, so expenses "
+                            'shared with them stay on this device. Add them '
+                            'by name instead to sync.'
+                      : "$who don't have TrackIt accounts, so expenses "
+                            'shared with them stay on this device. Add them '
+                            'by name instead to sync.',
+                  style: AppTextStyles.bodySm.copyWith(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                TextButton(
+                  onPressed: onAddAsGuests,
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  child: Text(
+                    names.length == 1 ? 'Add by name' : 'Add them by name',
+                  ),
+                ),
+              ],
             ),
           ),
         ],

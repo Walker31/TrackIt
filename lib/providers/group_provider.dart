@@ -58,8 +58,22 @@ class GroupProvider extends ChangeNotifier {
     await refreshGroups();
   }
 
-  Future<void> addMember(int groupId, String username) async {
-    await _service.addMember(groupId, username);
+  Future<void> addMember(
+    int groupId,
+    String username, {
+    bool guest = false,
+  }) async {
+    await _service.addMember(groupId, username, guest: guest);
+    await refreshGroups();
+  }
+
+  Future<void> addRejectedAsGuests(int groupId) async {
+    await _service.addRejectedAsGuests(groupId);
+    await refreshGroups();
+  }
+
+  Future<void> linkGuest(GroupMember guest, String username) async {
+    await _service.linkGuest(guest, username);
     await refreshGroups();
   }
 

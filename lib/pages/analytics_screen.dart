@@ -6,6 +6,7 @@ import '../widgets/page_header.dart';
 import '../widgets/section_header.dart';
 import '../services/expense_service.dart';
 import '../services/workout_service.dart';
+import '../widgets/analytics/monthly_report_card.dart';
 import '../widgets/analytics/spending_chart.dart';
 import '../widgets/analytics/volume_chart.dart';
 
@@ -41,6 +42,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               child: ResponsiveColumns(
                 gap: 40,
                 left: [
+                  const FadeSlideIn(child: SectionHeader(title: 'This month')),
+                  const SizedBox(height: 12),
+                  const FadeSlideIn(index: 1, child: MonthlyReportCard()),
+                  const SizedBox(height: 32),
                   const FadeSlideIn(child: SectionHeader(title: "Spending")),
                   const SizedBox(height: 12),
                   FadeSlideIn(

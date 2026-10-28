@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../models/expenses.dart';
 import '../../providers/expense_provider.dart';
+import '../../services/budget_alert_service.dart';
 import '../../services/catalog_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -115,6 +118,8 @@ class _BudgetsCardState extends State<BudgetsCard> {
     if (ok != true || value == null || value <= 0) return;
     await _catalog.setBudget(selected.id, widget.provider.selectedMonth, value);
     _reload();
+    // A limit set below what's already spent warns straight away.
+    unawaited(BudgetAlertService().check());
   }
 
   @override

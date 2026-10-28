@@ -4,13 +4,13 @@ import 'package:flutter/services.dart';
 import '../models/expenses.dart';
 import '../services/catalog_service.dart';
 import '../services/expense_service.dart';
-import '../services/notification_service.dart';
+import '../services/budget_alert_service.dart';
 import '../services/sync_service.dart';
-import '../utils/format.dart';
 
 class ExpenseProvider extends ChangeNotifier {
   final ExpenseService _service = ExpenseService();
   final CatalogService _catalog = CatalogService();
+  final BudgetAlertService _budgetAlerts = BudgetAlertService();
 
   List<Expense> _expenses = [];
   DailyExpenseSummary? _todaySummary;
@@ -126,31 +126,26 @@ class ExpenseProvider extends ChangeNotifier {
     await _service.addExpense(expense);
     await _reload();
     HapticFeedback.lightImpact();
-
-    // Budget Alert
-    if (_monthlySpent > _monthlyBudget) {
-      NotificationService().showNotification(
-        id: 100,
-        title: "Budget Alert!",
-        body:
-            "You've exceeded your monthly budget of ${formatRupees(_monthlyBudget)}",
-      );
-    }
+    unawaited(_budgetAlerts.check());
   }
 
   Future<void> updateExpense(Expense expense) async {
     await _service.updateExpense(expense);
     await _reload();
+    unawaited(_budgetAlerts.check());
   }
 
   Future<void> deleteExpense(int id) async {
     await _service.deleteExpense(id);
     await _reload();
+    // Spending went down: lets a line crossed again warn again.
+    unawaited(_budgetAlerts.check());
   }
 
   Future<void> updateBudget(double amount) async {
     await _service.setMonthlyBudget(amount);
     await _reload();
+    unawaited(_budgetAlerts.check());
   }
 
   Future<List<Expense>> getExpensesForDate(DateTime date) async {

@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+import 'api_service.dart';
 import 'database_service.dart';
 import 'sync_outbox.dart';
 import 'sync_service.dart';
@@ -45,9 +47,14 @@ class GroupService {
     return getGroup(groupId);
   }
 
-  /// Queue adding an existing user (by username) to a group. Requires the
-  /// group to eventually sync before the invite reaches the server.
-  Future<void> addMember(int groupId, String username) async {
+  /// Queue adding someone to a group: an existing user by username, or
+  /// with [guest] someone without an account, by name. Requires the group
+  /// to eventually sync before the invite reaches the server.
+  Future<void> addMember(
+    int groupId,
+    String username, {
+    bool guest = false,
+  }) async {
     final db = await _dbService.getDatabase();
 
     final existing = await db.query(
@@ -64,10 +71,68 @@ class GroupService {
       'group_id': groupId,
       'username': username,
       'role': 'member',
+      'is_guest': guest ? 1 : 0,
       'is_synced': 0,
     });
 
     _syncService.performSync();
+  }
+
+  /// Members the server refused because no account has that username:
+  /// re-add them as guests, so they (and expenses shared with them) sync.
+  Future<void> addRejectedAsGuests(int groupId) async {
+    final db = await _dbService.getDatabase();
+    await db.update(
+      'group_members',
+      {'is_guest': 1, 'sync_error': null, 'is_synced': 0},
+      where: 'group_id = ? AND sync_error IS NOT NULL AND remote_id IS NULL',
+      whereArgs: [groupId],
+    );
+    _syncService.performSync();
+  }
+
+  /// Attach the account [username] to a guest member. Needs the server,
+  /// so the guest must already be synced; their expenses and settlements
+  /// stay with them.
+  Future<void> linkGuest(GroupMember guest, String username) async {
+    final db = await _dbService.getDatabase();
+    final groups = await db.query(
+      'groups',
+      columns: ['remote_id'],
+      where: 'id = ?',
+      whereArgs: [guest.groupId],
+    );
+    final groupRemoteId = groups.firstOrNull?['remote_id'];
+    if (groupRemoteId == null || guest.remoteId == null) {
+      throw StateError('Sync first, then try again.');
+    }
+
+    final Response response;
+    try {
+      response = await ApiService().post(
+        'groups/groups/$groupRemoteId/link-member/',
+        data: {'member': guest.remoteId, 'username': username},
+      );
+    } on DioException catch (e) {
+      final data = e.response?.data;
+      final reason = data is Map
+          ? (data['username'] is List
+                ? (data['username'] as List).join(' ')
+                : data['detail']?.toString())
+          : null;
+      throw StateError(reason ?? "Couldn't reach the server. Try again.");
+    }
+    await db.update(
+      'group_members',
+      {
+        'username': response.data['username'],
+        'user_id': response.data['user'],
+        'email': response.data['email'],
+        'is_guest': 0,
+      },
+      where: 'id = ?',
+      whereArgs: [guest.id],
+    );
   }
 
   Future<List<Group>> getAllGroups() async {

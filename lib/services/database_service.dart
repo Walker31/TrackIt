@@ -319,6 +319,13 @@ class DatabaseService {
 
     // Why the server refused a group member (e.g. unknown username).
     await _ensureColumn(db, 'group_members', 'sync_error', 'TEXT');
+    // Someone without a TrackIt account, added by name.
+    await _ensureColumn(
+      db,
+      'group_members',
+      'is_guest',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
     // Budgets sync by their client-generated id; existing ones get pushed.
     await _ensureColumn(
       db,

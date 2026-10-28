@@ -1253,6 +1253,18 @@ class SyncService {
       );
 
       if (existing.isNotEmpty) {
+        // A guest may since have been linked to an account (here or on
+        // another device): take the server's name and account.
+        await db.update(
+          'group_members',
+          {
+            'user_id': m['user'],
+            'username': m['username'],
+            'is_guest': m['is_guest'] == true ? 1 : 0,
+          },
+          where: 'id = ?',
+          whereArgs: [existing.first['id']],
+        );
         continue;
       }
 
@@ -1281,6 +1293,7 @@ class SyncService {
             'is_synced': 1,
             'user_id': m['user'],
             'username': m['username'],
+            'is_guest': m['is_guest'] == true ? 1 : 0,
           },
           where: 'id = ?',
           whereArgs: [localMatch.first['id']],
@@ -1293,7 +1306,8 @@ class SyncService {
           'user_id': m['user'],
           'username': m['username'],
           'email': m['email'],
-          'role': m['role'],
+          'role': m['role'] ?? 'member',
+          'is_guest': m['is_guest'] == true ? 1 : 0,
           'is_synced': 1,
         });
       }
@@ -1319,7 +1333,9 @@ class SyncService {
       try {
         final response = await _apiService.post(
           'groups/groups/$groupRemoteId/add-member/',
-          data: {'username': map['username']},
+          data: map['is_guest'] == 1
+              ? {'guest_name': map['username']}
+              : {'username': map['username']},
         );
         await db.update(
           'group_members',

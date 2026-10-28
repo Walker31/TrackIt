@@ -11,6 +11,10 @@ class GroupMember {
   /// username). Null when fine or not yet tried.
   final String? syncError;
 
+  /// Added by name, without a TrackIt account; [username] is their name.
+  /// Can be linked to an account later.
+  final bool isGuest;
+
   GroupMember({
     this.id,
     this.remoteId,
@@ -20,6 +24,7 @@ class GroupMember {
     this.email,
     this.role = 'member',
     this.syncError,
+    this.isGuest = false,
   });
 
   bool get isOwner => role == 'owner';
@@ -33,6 +38,7 @@ class GroupMember {
       'username': username,
       'email': email,
       'role': role,
+      'is_guest': isGuest ? 1 : 0,
     };
   }
 
@@ -46,6 +52,7 @@ class GroupMember {
       email: map['email'] as String?,
       role: map['role'] as String? ?? 'member',
       syncError: map['sync_error'] as String?,
+      isGuest: (map['is_guest'] as int? ?? 0) == 1,
     );
   }
 
@@ -59,6 +66,7 @@ class GroupMember {
       email: email,
       role: role,
       syncError: syncError,
+      isGuest: isGuest,
     );
   }
 }
