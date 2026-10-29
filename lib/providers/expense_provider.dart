@@ -126,26 +126,36 @@ class ExpenseProvider extends ChangeNotifier {
     await _service.addExpense(expense);
     await _reload();
     HapticFeedback.lightImpact();
-    unawaited(_budgetAlerts.check());
+    await _checkBudgets();
   }
 
   Future<void> updateExpense(Expense expense) async {
     await _service.updateExpense(expense);
     await _reload();
-    unawaited(_budgetAlerts.check());
+    await _checkBudgets();
   }
 
   Future<void> deleteExpense(int id) async {
     await _service.deleteExpense(id);
     await _reload();
     // Spending went down: lets a line crossed again warn again.
-    unawaited(_budgetAlerts.check());
+    await _checkBudgets();
   }
 
   Future<void> updateBudget(double amount) async {
     await _service.setMonthlyBudget(amount);
     await _reload();
-    unawaited(_budgetAlerts.check());
+    await _checkBudgets();
+  }
+
+  /// A few local reads; awaited so it can't outlive the database (as in
+  /// tests). An alert failing must never fail the save itself.
+  Future<void> _checkBudgets() async {
+    try {
+      await _budgetAlerts.check();
+    } catch (e) {
+      debugPrint('Budget alert check failed: $e');
+    }
   }
 
   Future<List<Expense>> getExpensesForDate(DateTime date) async {
