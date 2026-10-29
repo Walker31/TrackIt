@@ -1,9 +1,11 @@
 # TrackIt backend: changes needed for sync
 
-> **Status:** Option A (sections 0–3) is implemented in
-> `E:\Django\trackit_backend` (uncommitted, 14 tests passing on SQLite). It
-> still needs `python manage.py migrate` on the deployed database. Deleting an
-> already-deleted row returns 404, which the app treats as success.
+> **Status: done.** This is the original design note, kept for background.
+> Option A (sections 0–3) and the later additions (routines, budgets, editing
+> and deleting group data, guest members) are built in
+> [TrackIt-Backend](https://github.com/Walker31/TrackIt-Backend), whose
+> README documents the current API and sync protocol. The local paths below
+> refer to where it was first written.
 
 Written against `E:\Django\trackit_backend` (Django 6, DRF, SimpleJWT,
 `PageNumberPagination` with `PAGE_SIZE=100`). All changes are additive and
