@@ -106,50 +106,46 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
 
   double get _amount => double.tryParse(_amountController.text) ?? 0.0;
 
+  /// The server rejects splits more than ₹0.01 off the amount.
+  static bool _adds(double total, double target) =>
+      (total - target).abs() <= 0.01 + 1e-9;
+
+  double _entered(int memberId) =>
+      double.tryParse(_shareControllers[memberId]?.text ?? '') ?? 0.0;
+
+  /// Shares rounded to paise, the last one taking what rounding left, so
+  /// they add up to the amount exactly.
+  List<double> _inPaise(List<double> shares) {
+    final paise = [for (final s in shares) (s * 100).round()];
+    final others = paise.take(paise.length - 1).fold(0, (a, b) => a + b);
+    paise[paise.length - 1] = (_amount * 100).round() - others;
+    return [for (final p in paise) p / 100];
+  }
+
   List<ExpenseSplit> _computeSplits() {
     final included = widget.group.members
         .where((m) => _includedMemberIds.contains(m.id))
         .toList();
     if (included.isEmpty) return [];
 
-    switch (_splitType) {
-      case SplitType.equal:
-        final share = _amount / included.length;
-        return included
-            .map(
-              (m) => ExpenseSplit(
-                expenseId: 0,
-                memberId: m.id!,
-                shareAmount: share,
-              ),
-            )
-            .toList();
-      case SplitType.exact:
-        return included
-            .map(
-              (m) => ExpenseSplit(
-                expenseId: 0,
-                memberId: m.id!,
-                shareAmount:
-                    double.tryParse(_shareControllers[m.id]?.text ?? '') ?? 0.0,
-              ),
-            )
-            .toList();
-      case SplitType.percentage:
-        return included
-            .map(
-              (m) => ExpenseSplit(
-                expenseId: 0,
-                memberId: m.id!,
-                shareAmount:
-                    _amount *
-                    (double.tryParse(_shareControllers[m.id]?.text ?? '') ??
-                        0.0) /
-                    100,
-              ),
-            )
-            .toList();
-    }
+    final shares = switch (_splitType) {
+      SplitType.equal => _inPaise([
+        for (final _ in included) _amount / included.length,
+      ]),
+      SplitType.exact => [for (final m in included) _entered(m.id!)],
+      // Only called once the percentages add up to 100.
+      SplitType.percentage => _inPaise([
+        for (final m in included) _amount * _entered(m.id!) / 100,
+      ]),
+    };
+    return [
+      for (var i = 0; i < included.length; i++)
+        ExpenseSplit(
+          expenseId: 0,
+          memberId: included[i].id!,
+          shareAmount: shares[i],
+        ),
+    ];
   }
 
   Future<void> _pickReceipt() async {
@@ -176,27 +172,31 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
   }
 
   Future<void> _save() async {
-    final splits = _computeSplits();
     if (_amount <= 0) {
       setState(() => _error = 'Enter an amount greater than 0.');
       return;
     }
-    if (splits.isEmpty) {
+    if (_includedMemberIds.isEmpty) {
       setState(() => _error = 'Split it with at least one person.');
       return;
     }
 
     if (_splitType != SplitType.equal) {
-      final total = splits.fold<double>(0, (sum, s) => sum + s.shareAmount);
-      if ((total - _amount).abs() > 0.5) {
+      final percent = _splitType == SplitType.percentage;
+      final entered = _includedMemberIds.fold<double>(
+        0,
+        (sum, id) => sum + _entered(id),
+      );
+      if (!_adds(entered, percent ? 100 : _amount)) {
         setState(
-          () => _error = _splitType == SplitType.percentage
+          () => _error = percent
               ? 'Percentages must add up to 100%. Tap the split to fix.'
               : 'Amounts must add up to the total. Tap the split to fix.',
         );
         return;
       }
     }
+    final splits = _computeSplits();
 
     setState(() {
       _isSaving = true;
@@ -687,12 +687,12 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
     }
     double entered = 0;
     for (final id in _includedMemberIds) {
-      entered += double.tryParse(_shareControllers[id]?.text ?? '') ?? 0;
+      entered += _entered(id);
     }
     final percent = _splitType == SplitType.percentage;
     final target = percent ? 100.0 : _amount;
     final left = target - entered;
-    final done = left.abs() < (percent ? 0.01 : 0.5);
+    final done = _adds(entered, target);
     String fmt(double v) => percent ? '${_trim(v)}%' : formatRupees(v);
     return Text(
       done

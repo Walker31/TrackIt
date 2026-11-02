@@ -17,6 +17,8 @@ class AuthService {
         'auth/login/',
         data: {'username': username, 'password': password},
       );
+      // Before the tokens exist, so nothing syncs the old account's data.
+      await AppModeService().adoptAccount(username);
       await storage.write(key: 'access_token', value: response.data['access']);
       await storage.write(
         key: 'refresh_token',

@@ -718,10 +718,11 @@ class DatabaseService {
     _database = null;
   }
 
-  /// Clear user data from the local database.
-  ///
-  /// This is intended for testing and debugging only.
-  Future<void> clearAllData() async {
+  /// Remove everything that belongs to the person using the app: their
+  /// data, custom categories, queued server writes and personal settings.
+  /// The install's mode, server and theme stay. Used when a different
+  /// account signs in on this device.
+  Future<void> clearUserData() async {
     final db = await getDatabase();
     await db.transaction((txn) async {
       await txn.delete(SyncOutbox.table);
@@ -739,9 +740,15 @@ class DatabaseService {
       await txn.delete('group_members');
       await txn.delete('groups');
       await txn.delete(
+        'subcategories',
+        where:
+            'category_id IN (SELECT id FROM categories WHERE is_default = 0)',
+      );
+      await txn.delete('categories', where: 'is_default = 0');
+      await txn.delete(
         'settings',
         where: 'key NOT IN (?, ?, ?)',
-        whereArgs: [_monthlyBudgetKey, 'app_mode', 'server_url'],
+        whereArgs: ['app_mode', 'server_url', 'theme_mode'],
       );
     });
 

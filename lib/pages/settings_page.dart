@@ -551,7 +551,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _handleLogout() async {
     final go = await _confirmLeavingServer(
       title: 'Log out?',
-      message: 'Your data stays on this device. Sign in again to sync.',
+      message:
+          'Your data stays on this device. Sign in again to sync; '
+          'signing in to a different account clears it.',
       action: 'Log out',
     );
     if (go && mounted) {

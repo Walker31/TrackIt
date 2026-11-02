@@ -99,6 +99,8 @@ class AuthNotifier extends ChangeNotifier {
       _state = AuthState(status: AuthStatus.unauthenticated);
     } else if (result.profile != null) {
       _state = _state.copyWith(user: result.profile);
+      final username = result.profile!['username'];
+      if (username is String) await AppModeService().rememberAccount(username);
     }
     notifyListeners();
   }
