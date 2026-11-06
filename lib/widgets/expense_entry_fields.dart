@@ -4,22 +4,23 @@ import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import 'animated/tap_scale.dart';
 
-/// The amount + note pair at the top of the add-expense sheets: a large
-/// centred amount (the one thing every entry needs, focused on open) and
-/// a note field led by the chosen category's icon.
+/// The description + amount pair at the top of the add-expense sheets, laid
+/// out like Splitwise: two underlined fields, each led by a square tile —
+/// the chosen category's icon beside the description, the rupee sign
+/// beside the amount.
 class ExpenseEntryFields extends StatelessWidget {
   final TextEditingController descriptionController;
   final TextEditingController amountController;
 
-  /// Icon and colour of the chosen category, shown at the start of the
-  /// note field.
+  /// Icon and colour of the chosen category, shown in the description tile.
   final IconData icon;
   final Color iconColor;
 
-  /// Colour of the amount and its cursor (income teal / expense orange).
+  /// Colour of the rupee tile and the amount cursor (income teal / expense
+  /// orange).
   final Color accent;
 
-  /// Tapping the category icon, e.g. to jump to the category picker.
+  /// Tapping the category tile, e.g. to jump to the category picker.
   final VoidCallback? onIconTap;
   final ValueChanged<String>? onAmountChanged;
   final bool autofocus;
@@ -36,137 +37,157 @@ class ExpenseEntryFields extends StatelessWidget {
     this.autofocus = true,
   });
 
+  static InputDecoration _underline(String hint, TextStyle hintStyle) =>
+      InputDecoration(
+        hintText: hint,
+        hintStyle: hintStyle,
+        counterText: '',
+        filled: false,
+        isDense: true,
+        contentPadding: const EdgeInsets.only(bottom: 8, top: 4),
+        border: UnderlineInputBorder(
+          borderSide: BorderSide(
+            color: AppColors.textTertiary.withValues(alpha: 0.5),
+          ),
+        ),
+        enabledBorder: UnderlineInputBorder(
+          borderSide: BorderSide(
+            color: AppColors.textTertiary.withValues(alpha: 0.5),
+          ),
+        ),
+        focusedBorder: UnderlineInputBorder(
+          borderSide: BorderSide(color: AppColors.primary, width: 2),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
-    Widget categoryIcon = AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      width: 32,
-      height: 32,
-      margin: const EdgeInsets.only(left: 8, right: 4),
-      decoration: BoxDecoration(
-        color: iconColor.withValues(alpha: 0.14),
-        shape: BoxShape.circle,
-      ),
+    Widget categoryTile = _Tile(
+      color: iconColor,
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 220),
         transitionBuilder: (child, animation) =>
             ScaleTransition(scale: animation, child: child),
-        child: Icon(icon, key: ValueKey(icon), size: 18, color: iconColor),
+        child: Icon(icon, key: ValueKey(icon), size: 24, color: iconColor),
       ),
     );
     if (onIconTap != null) {
-      categoryIcon = Tooltip(
+      categoryTile = Tooltip(
         message: 'Change category',
-        child: TapScale(onTap: onIconTap, child: categoryIcon),
+        child: TapScale(onTap: onIconTap, child: categoryTile),
       );
     }
 
-    return Column(
-      children: [
-        _AmountField(
-          controller: amountController,
-          accent: accent,
-          autofocus: autofocus,
-          onChanged: onAmountChanged,
-        ),
-        const SizedBox(height: 20),
-        TextField(
-          controller: descriptionController,
-          textCapitalization: TextCapitalization.sentences,
-          textInputAction: TextInputAction.done,
-          maxLength: 80,
-          style: AppTextStyles.bodyLg,
-          decoration: InputDecoration(
-            hintText: 'Add a note (optional)',
-            counterText: '',
-            prefixIcon: categoryIcon,
-            prefixIconConstraints: const BoxConstraints(minHeight: 48),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 14,
-            ),
-          ),
-        ),
-      ],
+    final descriptionStyle = AppTextStyles.bodyLg.copyWith(
+      fontSize: 18,
+      color: AppColors.textPrimary,
     );
-  }
-}
+    final amountStyle = AppTextStyles.h1.copyWith(
+      fontSize: 34,
+      height: 1.15,
+      fontWeight: FontWeight.w600,
+      letterSpacing: -0.5,
+      color: AppColors.textPrimary,
+    );
 
-/// Big centred amount with a ₹ sign that sits right next to the digits.
-class _AmountField extends StatelessWidget {
-  final TextEditingController controller;
-  final Color accent;
-  final bool autofocus;
-  final ValueChanged<String>? onChanged;
-
-  const _AmountField({
-    required this.controller,
-    required this.accent,
-    required this.autofocus,
-    this.onChanged,
-  });
-
-  static TextStyle _style(Color color) => AppTextStyles.h1.copyWith(
-    fontSize: 44,
-    height: 1.1,
-    fontWeight: FontWeight.w700,
-    letterSpacing: -0.5,
-    color: color,
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<TextEditingValue>(
-      valueListenable: controller,
-      builder: (context, value, _) {
-        final empty = value.text.isEmpty;
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text(
-              '₹',
-              style: _style(
-                empty ? AppColors.textTertiary : accent,
-              ).copyWith(fontSize: 30, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(width: 6),
-            // Grows with the digits so the ₹ stays attached, capped so long
-            // amounts scroll inside the field instead of overflowing.
-            ConstrainedBox(
-              constraints: const BoxConstraints(minWidth: 60, maxWidth: 260),
-              child: IntrinsicWidth(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              categoryTile,
+              const SizedBox(width: 14),
+              Expanded(
                 child: TextField(
-                  controller: controller,
-                  onChanged: onChanged,
+                  controller: descriptionController,
                   autofocus: autofocus,
+                  textCapitalization: TextCapitalization.sentences,
+                  textInputAction: TextInputAction.next,
+                  maxLength: 80,
+                  style: descriptionStyle,
+                  decoration: _underline(
+                    'Enter a description',
+                    descriptionStyle.copyWith(color: AppColors.textTertiary),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              ValueListenableBuilder<TextEditingValue>(
+                valueListenable: amountController,
+                builder: (context, value, _) {
+                  final color = value.text.isEmpty
+                      ? AppColors.textSecondary
+                      : accent;
+                  return _Tile(
+                    color: color,
+                    child: Text(
+                      '₹',
+                      style: AppTextStyles.h2.copyWith(
+                        color: color,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: TextField(
+                  controller: amountController,
+                  onChanged: onAmountChanged,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  textInputAction: TextInputAction.next,
+                  textInputAction: TextInputAction.done,
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(
                       RegExp(r'^\d{0,9}(\.\d{0,2})?'),
                     ),
                   ],
                   cursorColor: accent,
-                  style: _style(AppColors.textPrimary),
-                  decoration: InputDecoration(
-                    hintText: '0',
-                    hintStyle: _style(AppColors.textTertiary),
-                    filled: false,
-                    isDense: true,
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
+                  style: amountStyle,
+                  decoration: _underline(
+                    '0.00',
+                    amountStyle.copyWith(color: AppColors.textTertiary),
                   ),
                 ),
               ),
-            ),
-          ],
-        );
-      },
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Square, lightly tinted tile with a hairline border, like the ones
+/// Splitwise puts beside its description and amount fields.
+class _Tile extends StatelessWidget {
+  final Color color;
+  final Widget child;
+
+  const _Tile({required this.color, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      width: 52,
+      height: 52,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: child,
     );
   }
 }

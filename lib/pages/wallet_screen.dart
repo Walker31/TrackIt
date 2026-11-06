@@ -45,6 +45,9 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = ref.watch(expenseProviderProvider);
+    // The tab stays alive between visits, so pick up expenses that change
+    // elsewhere (sync, the home tab) in the trip totals too.
+    ref.listen(expenseProviderProvider, (_, _) => _tripsRefresh.value++);
     final groupProvider = ref.watch(groupProviderProvider);
     // Events work offline as a way to group spending; sharing and
     // splitting them needs an account.
@@ -219,7 +222,6 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     AppSnackbar.success(
       context,
       'Trip "${event.title}" created. Tag expenses to it when adding.',
-      aboveNav: true,
     );
   }
 
@@ -240,10 +242,9 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
             AppSnackbar.warning(
               this.context,
               '$label You are over your monthly budget.',
-              aboveNav: true,
             );
           } else {
-            AppSnackbar.success(this.context, label, aboveNav: true);
+            AppSnackbar.success(this.context, label);
           }
         },
       ),
@@ -264,7 +265,6 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
           AppSnackbar.success(
             context,
             '${updated.isIncome ? 'Income' : 'Expense'} updated.',
-            aboveNav: true,
           );
         },
       ),
@@ -288,7 +288,6 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
             signedIn
                 ? 'Event "$name" created. Add members to start splitting.'
                 : 'Event "$name" created. Add expenses to it with +.',
-            aboveNav: true,
           );
         },
       ),

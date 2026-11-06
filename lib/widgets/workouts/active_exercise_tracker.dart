@@ -76,13 +76,11 @@ class ActiveExerciseTracker extends StatelessWidget {
                           ? '${exercise.name} complete — great work!'
                           : 'Set ${current.setNumber} logged: '
                                 '${formatWeight(weight)} kg × $reps',
-                      aboveNav: true,
                     );
                   }
                 : () => AppSnackbar.info(
                     context,
                     'All sets for ${exercise.name} are already done.',
-                    aboveNav: true,
                   ),
           ),
         ],

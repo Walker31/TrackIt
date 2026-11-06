@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../providers/expense_provider.dart';
 import '../../services/report_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -9,7 +10,10 @@ import '../app_card.dart';
 /// Stats tab's month summary: income vs spending, what's left, the change
 /// from last month and the biggest categories. Arrows step through months.
 class MonthlyReportCard extends StatefulWidget {
-  const MonthlyReportCard({super.key});
+  /// Reloads the report whenever expenses change.
+  final ExpenseProvider expenses;
+
+  const MonthlyReportCard({super.key, required this.expenses});
 
   @override
   State<MonthlyReportCard> createState() => _MonthlyReportCardState();
@@ -26,6 +30,27 @@ class _MonthlyReportCardState extends State<MonthlyReportCard> {
     final now = DateTime.now();
     _month = DateTime(now.year, now.month);
     _report = _service.monthly(_month);
+    widget.expenses.addListener(_reload);
+  }
+
+  @override
+  void didUpdateWidget(MonthlyReportCard old) {
+    super.didUpdateWidget(old);
+    if (old.expenses != widget.expenses) {
+      old.expenses.removeListener(_reload);
+      widget.expenses.addListener(_reload);
+      _reload();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.expenses.removeListener(_reload);
+    super.dispose();
+  }
+
+  void _reload() {
+    if (mounted) setState(() => _report = _service.monthly(_month));
   }
 
   bool get _isCurrent {

@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:trackit/router.dart';
 import 'package:trackit/services/app_mode_service.dart';
@@ -11,6 +13,13 @@ import 'theme/app_colors.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // The bundled Inter font is under the SIL Open Font License, which has to
+  // travel with it.
+  LicenseRegistry.addLicense(() async* {
+    final license = await rootBundle.loadString('assets/fonts/inter/OFL.txt');
+    yield LicenseEntryWithLineBreaks(const ['Inter'], license);
+  });
 
   // Initialize services
   await DatabaseService.initialize();

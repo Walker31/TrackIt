@@ -13,8 +13,8 @@ import '../app_button.dart';
 import '../../models/expenses.dart';
 import '../../utils/format.dart';
 
-/// Bottom-sheet transaction entry: type toggle, a large amount and note,
-/// the category grid, then optional subcategory / date / payment / trip.
+/// Bottom-sheet transaction entry: type toggle, Splitwise-style description
+/// and amount rows, the category grid, then subcategory / date / payment / trip.
 class AddExpenseSheet extends StatefulWidget {
   final Function(Expense) onAdd;
 
@@ -273,18 +273,16 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
             children: [
               const _DragHandle(),
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 10, 12, 0),
+                padding: const EdgeInsets.fromLTRB(24, 6, 12, 0),
                 child: Row(
                   children: [
-                    SizedBox(
-                      width: 220,
-                      child: AnimatedSegmentedTabs(
-                        labels: const ['Expense', 'Income'],
-                        selectedIndex: _type.index,
-                        onChanged: (i) => _setType(TxnType.values[i]),
+                    Expanded(
+                      child: Text(
+                        '${_editing ? 'Edit' : 'Add'} '
+                        '${isIncome ? 'income' : 'expense'}',
+                        style: AppTextStyles.h3,
                       ),
                     ),
-                    const Spacer(),
                     IconButton(
                       onPressed: () => Navigator.pop(context),
                       icon: const Icon(Icons.close_rounded),
@@ -295,10 +293,21 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
               ),
               Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 16),
+                  padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Center(
+                        child: SizedBox(
+                          width: 220,
+                          child: AnimatedSegmentedTabs(
+                            labels: const ['Expense', 'Income'],
+                            selectedIndex: _type.index,
+                            onChanged: (i) => _setType(TxnType.values[i]),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
                       FadeSlideIn(
                         child: ExpenseEntryFields(
                           descriptionController: _descController,

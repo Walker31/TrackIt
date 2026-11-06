@@ -54,11 +54,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     if (mounted) {
       if (error == null) {
         context.go('/home');
-        AppSnackbar.success(
-          context,
-          'Account created. Welcome to TrackIt!',
-          aboveNav: true,
-        );
+        AppSnackbar.success(context, 'Account created. Welcome to TrackIt!');
       } else {
         AppSnackbar.error(context, error);
       }

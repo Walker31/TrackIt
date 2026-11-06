@@ -237,7 +237,6 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
           AppSnackbar.success(
             this.context,
             '${exercise.name} added to today\'s workout.',
-            aboveNav: true,
           );
         },
       ),
@@ -256,7 +255,6 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
           AppSnackbar.success(
             this.context,
             'Routine "${routine.name}" created.',
-            aboveNav: true,
           );
         },
       ),

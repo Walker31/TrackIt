@@ -18,10 +18,33 @@ class Layout extends StatefulWidget {
   State<Layout> createState() => _LayoutState();
 }
 
-class _LayoutState extends State<Layout> {
+class _LayoutState extends State<Layout> with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
 
-  late List<Widget> _pages;
+  late final List<Widget> _pages;
+
+  /// Tabs opened so far. A tab is built on its first visit and then kept
+  /// alive, so its scroll position and in-progress state survive switching.
+  final Set<int> _visited = {0};
+
+  /// Keeps the tab pages' state when a window resize swaps the bottom bar
+  /// for the side rail and the pages move to a different spot in the tree.
+  final _pagesKey = GlobalKey();
+
+  /// Fades and lifts the newly selected tab in.
+  late final AnimationController _enter = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 240),
+    value: 1,
+  );
+  late final Animation<double> _enterCurve = CurvedAnimation(
+    parent: _enter,
+    curve: Curves.easeOutCubic,
+  );
+  late final Animation<Offset> _enterOffset = Tween<Offset>(
+    begin: const Offset(0, 0.015),
+    end: Offset.zero,
+  ).animate(_enterCurve);
 
   static const _items = [
     (Icons.home_outlined, Icons.home_rounded, 'Home'),
@@ -45,10 +68,20 @@ class _LayoutState extends State<Layout> {
     ];
   }
 
+  @override
+  void dispose() {
+    _enter.dispose();
+    super.dispose();
+  }
+
   void _select(int index) {
     if (index == _currentIndex) return;
     HapticFeedback.selectionClick();
-    setState(() => _currentIndex = index);
+    setState(() {
+      _currentIndex = index;
+      _visited.add(index);
+    });
+    _enter.forward(from: 0);
   }
 
   @override
@@ -94,25 +127,34 @@ class _LayoutState extends State<Layout> {
   }
 
   Widget _pageSwitcher() {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 240),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeIn,
-      transitionBuilder: (child, animation) => FadeTransition(
-        opacity: animation,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 0.015),
-            end: Offset.zero,
-          ).animate(animation),
-          child: child,
-        ),
-      ),
-      layoutBuilder: (current, previous) =>
-          Stack(fit: StackFit.expand, children: [...previous, ?current]),
-      child: KeyedSubtree(
-        key: ValueKey(_currentIndex),
-        child: _pages[_currentIndex],
+    return KeyedSubtree(
+      key: _pagesKey,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          for (var i = 0; i < _pages.length; i++)
+            // Same widget structure whether a tab is showing or not, so
+            // switching never rebuilds a tab from scratch.
+            Offstage(
+              offstage: i != _currentIndex,
+              child: TickerMode(
+                enabled: i == _currentIndex,
+                child: FadeTransition(
+                  opacity: i == _currentIndex
+                      ? _enterCurve
+                      : kAlwaysCompleteAnimation,
+                  child: SlideTransition(
+                    position: i == _currentIndex
+                        ? _enterOffset
+                        : const AlwaysStoppedAnimation(Offset.zero),
+                    child: _visited.contains(i)
+                        ? _pages[i]
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -48,7 +48,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (mounted) {
       if (error == null) {
         context.go('/home');
-        AppSnackbar.success(context, 'Welcome back!', aboveNav: true);
+        AppSnackbar.success(context, 'Welcome back!');
       } else {
         AppSnackbar.error(context, error);
       }
