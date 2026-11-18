@@ -34,7 +34,7 @@ class _CreateGroupSheetState extends State<CreateGroupSheet> {
   Widget build(BuildContext context) {
     return GlassContainer(
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 24,
         top: 24,
         left: 24,
         right: 24,

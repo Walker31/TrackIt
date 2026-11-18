@@ -116,7 +116,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
             ],
           ),
           Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
+            top: MediaQuery.paddingOf(context).top + 10,
             left: 20,
             right: 20,
             child: AnimatedSwitcher(
@@ -278,7 +278,7 @@ class _CreateRoutineSheetState extends State<_CreateRoutineSheet> {
   Widget build(BuildContext context) {
     return GlassContainer(
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 24,
         top: 24,
         left: 24,
         right: 24,
@@ -359,7 +359,7 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
   Widget build(BuildContext context) {
     return GlassContainer(
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 24,
         top: 24,
         left: 24,
         right: 24,

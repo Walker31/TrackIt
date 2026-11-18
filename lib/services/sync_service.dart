@@ -14,6 +14,16 @@ import 'id_generator.dart';
 import 'package:sqflite/sqflite.dart'
     show ConflictAlgorithm, Database, DatabaseExecutor;
 
+/// How a sync pass that ran (the device had a connection) went.
+enum SyncOutcome {
+  /// Every request got an answer from the server, success or not.
+  reached,
+
+  /// At least one request got no answer: the server is down, or the
+  /// network only looks connected (captive portal, dead Wi-Fi).
+  unreachable,
+}
+
 class SyncService {
   static final SyncService _instance = SyncService._internal();
   factory SyncService() => _instance;
@@ -174,7 +184,10 @@ class SyncService {
   /// Fires after every completed sync run, so screens can reload from the
   /// local database once pulled data has landed.
   Stream<void> get onSyncComplete => _syncComplete.stream;
-  final _syncComplete = StreamController<void>.broadcast();
+
+  /// Same events as [onSyncComplete], saying whether the server answered.
+  Stream<SyncOutcome> get onSyncOutcome => _syncComplete.stream;
+  final _syncComplete = StreamController<SyncOutcome>.broadcast();
 
   /// Perform full sync. Overlapping calls share one run (see
   /// [CoalescingRunner]): two concurrent runs would both push the same rows
@@ -206,10 +219,15 @@ class SyncService {
     _pullThisPass =
         _forcePull || last == null || started.difference(last) >= _pullInterval;
     _forcePull = false;
+    final failuresBefore = ApiService.connectionFailures;
     final ok = await _runSync();
     if (_pullThisPass) _lastPull = started;
     if (ok) await _recordSuccess();
-    _syncComplete.add(null);
+    _syncComplete.add(
+      ApiService.connectionFailures > failuresBefore
+          ? SyncOutcome.unreachable
+          : SyncOutcome.reached,
+    );
   }
 
   /// Settings key for the last sync that ran to the end. Not under the

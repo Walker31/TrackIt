@@ -154,7 +154,8 @@ class _ToastState extends State<_Toast> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final media = MediaQuery.of(context);
+    final topInset = MediaQuery.paddingOf(context).top;
+    final screenWidth = MediaQuery.sizeOf(context).width;
 
     final (icon, accent) = switch (widget.type) {
       SnackbarType.success => (Icons.check_circle_rounded, AppColors.income),
@@ -168,12 +169,10 @@ class _ToastState extends State<_Toast> with SingleTickerProviderStateMixin {
     final hasAction = widget.actionLabel != null && widget.onAction != null;
 
     return Positioned(
-      top: media.padding.top + 12,
+      top: topInset + 12,
       right: 12,
       child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: math.min(320, media.size.width - 24),
-        ),
+        constraints: BoxConstraints(maxWidth: math.min(320, screenWidth - 24)),
         child: FadeTransition(
           opacity: _curve,
           child: SlideTransition(

@@ -247,11 +247,18 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
+    final insets = MediaQuery.viewInsetsOf(context);
+    // Room left above the keyboard, so the sheet never pushes past the
+    // status bar on short phones or in landscape.
+    final maxHeight =
+        (MediaQuery.sizeOf(context).height -
+            insets.bottom -
+            MediaQuery.paddingOf(context).top) *
+        0.92;
     return Padding(
-      padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+      padding: EdgeInsets.only(bottom: insets.bottom),
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: media.size.height * 0.92),
+        constraints: BoxConstraints(maxHeight: maxHeight),
         child: GlassContainer(
           borderRadius: 24,
           sheet: true,
@@ -547,7 +554,7 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
 
           return Padding(
             padding: EdgeInsets.only(
-              bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+              bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
             ),
             child: GlassContainer(
               sheet: true,

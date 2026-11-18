@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -12,26 +13,56 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  bool _ready = false;
+
+  /// Platforms this service delivers notifications on. Web, Windows and
+  /// Linux are skipped: the plugin either lacks them or can't schedule there.
+  static bool get _supported =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS);
+
+  /// Sets up the plugin and asks for permission. Never throws: a failure
+  /// here only means no reminders, and must not stop the app from starting.
   Future<void> initialize() async {
-    if (kIsWeb) return; // Notifications not supported on web via this package
+    if (!_supported) return;
 
-    tz.initializeTimeZones();
+    try {
+      tz.initializeTimeZones();
+      // Without this tz.local stays UTC and "8 PM" fires at 8 PM UTC.
+      try {
+        final zone = await FlutterTimezone.getLocalTimezone();
+        tz.setLocalLocation(tz.getLocation(zone.identifier));
+      } catch (e) {
+        debugPrint('NotificationService: unknown device timezone ($e)');
+      }
 
-    const AndroidInitializationSettings androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
-    const DarwinInitializationSettings iosSettings =
-        DarwinInitializationSettings(
-          requestAlertPermission: true,
-          requestBadgePermission: true,
-          requestSoundPermission: true,
-        );
+      const darwinSettings = DarwinInitializationSettings(
+        requestAlertPermission: true,
+        requestBadgePermission: true,
+        requestSoundPermission: true,
+      );
 
-    const InitializationSettings initSettings = InitializationSettings(
-      android: androidSettings,
-      iOS: iosSettings,
-    );
+      await _notificationsPlugin.initialize(
+        settings: const InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          iOS: darwinSettings,
+          macOS: darwinSettings,
+        ),
+      );
 
-    await _notificationsPlugin.initialize(settings: initSettings);
+      // Android 13+ hides every notification until the user allows them.
+      await _notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >()
+          ?.requestNotificationsPermission();
+
+      _ready = true;
+    } catch (e) {
+      debugPrint('NotificationService: init failed ($e)');
+    }
   }
 
   Future<void> showNotification({
@@ -39,7 +70,7 @@ class NotificationService {
     required String title,
     required String body,
   }) async {
-    if (kIsWeb) return;
+    if (!_ready) return;
 
     const AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
@@ -52,6 +83,7 @@ class NotificationService {
     const NotificationDetails details = NotificationDetails(
       android: androidDetails,
       iOS: DarwinNotificationDetails(),
+      macOS: DarwinNotificationDetails(),
     );
 
     await _notificationsPlugin.show(
@@ -69,7 +101,7 @@ class NotificationService {
     required int hour,
     required int minute,
   }) async {
-    if (kIsWeb) return;
+    if (!_ready) return;
 
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
@@ -78,6 +110,8 @@ class NotificationService {
         importance: Importance.max,
         priority: Priority.high,
       ),
+      iOS: DarwinNotificationDetails(),
+      macOS: DarwinNotificationDetails(),
     );
 
     try {
@@ -102,7 +136,7 @@ class NotificationService {
           matchDateTimeComponents: DateTimeComponents.time,
         );
       } else {
-        rethrow;
+        debugPrint('NotificationService: could not schedule (${e.code})');
       }
     }
   }

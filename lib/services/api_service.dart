@@ -55,6 +55,9 @@ class ApiService {
           return handler.next(options);
         },
         onError: (DioException e, handler) async {
+          if (e.response == null && e.type != DioExceptionType.cancel) {
+            connectionFailures++;
+          }
           final request = e.requestOptions;
           // An expired access token (1-day lifetime) gets a 401: renew it
           // with the refresh token and replay the request once.
@@ -80,6 +83,11 @@ class ApiService {
   }
 
   static const _retriedKey = 'auth_retried';
+
+  /// Requests that got no answer at all (no connection, DNS failure,
+  /// timeout). The sync compares it before and after a pass to tell "the
+  /// server is unreachable" apart from "the server said no".
+  static int connectionFailures = 0;
   static const _refreshPath = 'auth/token/refresh/';
 
   /// Login/register/refresh failures are real answers, not expired tokens.

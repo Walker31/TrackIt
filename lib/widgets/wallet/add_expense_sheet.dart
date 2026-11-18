@@ -257,13 +257,20 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   Widget build(BuildContext context) {
     final isIncome = _type == TxnType.income;
     final accent = isIncome ? AppColors.income : AppColors.outflow;
-    final media = MediaQuery.of(context);
+    final insets = MediaQuery.viewInsetsOf(context);
+    // Room left above the keyboard, so the sheet never pushes past the
+    // status bar on short phones or in landscape.
+    final maxHeight =
+        (MediaQuery.sizeOf(context).height -
+            insets.bottom -
+            MediaQuery.paddingOf(context).top) *
+        0.92;
     final amount = _amount;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+      padding: EdgeInsets.only(bottom: insets.bottom),
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: media.size.height * 0.92),
+        constraints: BoxConstraints(maxHeight: maxHeight),
         child: GlassContainer(
           borderRadius: 24,
           sheet: true,
