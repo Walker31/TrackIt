@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/app_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/responsive.dart';
 import '../theme/app_colors.dart';
@@ -170,6 +171,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                               members: group.members,
                               currentMemberId: myMemberId,
                               shared: shared,
+                              onExpenseTap: (e) =>
+                                  _showEditExpenseSheet(group, e, myMemberId),
                               onExpenseLongPress: (e) =>
                                   _expenseActions(group, e, myMemberId),
                               onSettlementLongPress: _deleteSettlement,
@@ -208,10 +211,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     int? myMemberId,
   ) {
     final provider = ref.read(groupProviderProvider);
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => AddGroupExpenseSheet(
         group: group,
         shared: ref.read(authProvider).state.status == AuthStatus.authenticated,
@@ -336,10 +337,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
     int? myMemberId,
   ) {
     final provider = ref.read(groupProviderProvider);
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => AddGroupExpenseSheet(
         group: group,
         shared: ref.read(authProvider).state.status == AuthStatus.authenticated,
@@ -384,10 +383,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
 
   void _showAddMemberSheet(BuildContext context) {
     final provider = ref.read(groupProviderProvider);
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => AddMemberSheet(
         onAdd: (name, {required guest}) async {
           await provider.addMember(widget.groupId, name, guest: guest);
@@ -484,10 +481,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
 
   void _showSettleUpSheet(BuildContext context, Group group, int myMemberId) {
     final provider = ref.read(groupProviderProvider);
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => SettleUpSheet(
         currentMemberId: myMemberId,
         members: group.members,

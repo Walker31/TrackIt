@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'app_sheet.dart';
 
 /// A themed surface container. By default it renders as a flat, opaque
 /// card with a hairline border. Pass [blur] > 0 for the few spots that
@@ -33,6 +34,8 @@ class GlassContainer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Shown as a dialog on wide windows: a floating card, not an edge sheet.
+    final sheet = this.sheet && !SheetPresentation.isDialog(context);
     final baseColor = color ?? Theme.of(context).colorScheme.surface;
     final radius = sheet
         ? BorderRadius.vertical(top: Radius.circular(borderRadius))

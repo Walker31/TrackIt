@@ -132,6 +132,7 @@ class _FormColumn extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(8),
               child: IconButton(
+                tooltip: 'Back',
                 icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
                 onPressed: () => Navigator.of(context).maybePop(),
               ),

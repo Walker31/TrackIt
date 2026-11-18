@@ -8,6 +8,8 @@ import '../widgets/page_header.dart';
 import '../widgets/dashboard/daily_summary_card.dart';
 import '../widgets/dashboard/recent_expenses_section.dart';
 import '../widgets/dashboard/fitness_goal_section.dart';
+import '../widgets/dashboard/quick_add_card.dart';
+import '../widgets/wallet/expense_flows.dart';
 
 class HomeScreen extends ConsumerWidget {
   final Function(int)? onTabChange;
@@ -17,6 +19,7 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final expenseProvider = ref.watch(expenseProviderProvider);
     final workoutProvider = ref.watch(workoutProviderProvider);
+    final twoColumns = WindowSize.of(context) == WindowSize.expanded;
 
     return Scaffold(
       body: RefreshIndicator(
@@ -38,6 +41,14 @@ class HomeScreen extends ConsumerWidget {
               child: PageHeader(
                 title: 'Today',
                 overline: DateFormat('EEEE, d MMM').format(DateTime.now()),
+                actions: [
+                  // Phones add from the Wallet button or Quick add below.
+                  if (!WindowSize.of(context).usesBottomNav)
+                    HeaderAddButton(
+                      label: 'Add expense',
+                      onPressed: () => openAddExpense(context, expenseProvider),
+                    ),
+                ],
               ),
             ),
             Padding(
@@ -53,6 +64,14 @@ class HomeScreen extends ConsumerWidget {
                       workoutProvider: workoutProvider,
                     ),
                   ),
+                  // Stacked layouts want it straight after the summary.
+                  if (!twoColumns) ...[
+                    const SizedBox(height: 24),
+                    FadeSlideIn(
+                      index: 2,
+                      child: QuickAddCard(provider: expenseProvider),
+                    ),
+                  ],
                   const SizedBox(height: 32),
                   FadeSlideIn(
                     index: 2,
@@ -63,8 +82,15 @@ class HomeScreen extends ConsumerWidget {
                   ),
                 ],
                 right: [
+                  if (twoColumns) ...[
+                    FadeSlideIn(
+                      index: 3,
+                      child: QuickAddCard(provider: expenseProvider),
+                    ),
+                    const SizedBox(height: 32),
+                  ],
                   FadeSlideIn(
-                    index: 3,
+                    index: 4,
                     child: FitnessGoalSection(
                       provider: workoutProvider,
                       onViewAll: () => onTabChange?.call(2),

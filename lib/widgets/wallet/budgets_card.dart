@@ -173,22 +173,25 @@ class _BudgetsCardState extends State<BudgetsCard> {
     final ratio = r.spent / r.budget.limitAmount;
     final over = ratio > 1;
     final color = over ? AppColors.outflow : r.category.colorValue;
+    Future<void> remove() async {
+      final confirmed = await confirmDestructive(
+        context,
+        title: 'Remove budget?',
+        message:
+            'The ${formatRupees(r.budget.limitAmount)} limit for '
+            '${r.category.name} will be removed for this month.',
+        action: 'Remove',
+      );
+      if (!confirmed) return;
+      await _catalog.deleteBudget(r.budget.id);
+      _reload();
+    }
+
     return InkWell(
       onTap: () =>
           _editBudget(preset: r.category, current: r.budget.limitAmount),
-      onLongPress: () async {
-        final confirmed = await confirmDestructive(
-          context,
-          title: 'Remove budget?',
-          message:
-              'The ${formatRupees(r.budget.limitAmount)} limit for '
-              '${r.category.name} will be removed for this month.',
-          action: 'Remove',
-        );
-        if (!confirmed) return;
-        await _catalog.deleteBudget(r.budget.id);
-        _reload();
-      },
+      onLongPress: remove,
+      onSecondaryTap: remove,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Column(

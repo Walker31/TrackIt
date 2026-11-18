@@ -51,19 +51,22 @@ class AnimatedSegmentedTabs extends StatelessWidget {
                 children: List.generate(labels.length, (index) {
                   final isSelected = index == selectedIndex;
                   return Expanded(
-                    child: GestureDetector(
-                      onTap: () => onChanged(index),
-                      behavior: HitTestBehavior.opaque,
-                      child: Center(
-                        child: AnimatedDefaultTextStyle(
-                          duration: const Duration(milliseconds: 200),
-                          style: AppTextStyles.bodyMd.copyWith(
-                            color: isSelected
-                                ? AppColors.primary
-                                : AppColors.textSecondary,
-                            fontWeight: FontWeight.bold,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () => onChanged(index),
+                        behavior: HitTestBehavior.opaque,
+                        child: Center(
+                          child: AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 200),
+                            style: AppTextStyles.bodyMd.copyWith(
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : AppColors.textSecondary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            child: Text(labels[index]),
                           ),
-                          child: Text(labels[index]),
                         ),
                       ),
                     ),

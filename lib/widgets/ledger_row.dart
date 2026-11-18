@@ -7,7 +7,11 @@ export '../utils/format.dart';
 
 /// Splitwise-style transaction row: date column, square category tile,
 /// title with a "who paid" line, and a small label over the amount.
-class LedgerRow extends StatelessWidget {
+///
+/// [onLongPress] is the row's secondary action (delete, or a menu). Touch
+/// reaches it by long-pressing; a mouse by right-clicking, or with the
+/// button that appears while the pointer is over the row.
+class LedgerRow extends StatefulWidget {
   final DateTime date;
   final IconData icon;
   final Color iconColor;
@@ -23,6 +27,10 @@ class LedgerRow extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
+  /// Icon and tooltip of the hover button for [onLongPress].
+  final IconData actionIcon;
+  final String actionTooltip;
+
   const LedgerRow({
     super.key,
     required this.date,
@@ -35,13 +43,40 @@ class LedgerRow extends StatelessWidget {
     required this.trailingColor,
     this.onTap,
     this.onLongPress,
+    this.actionIcon = Icons.more_horiz_rounded,
+    this.actionTooltip = 'More actions',
   });
 
   @override
+  State<LedgerRow> createState() => _LedgerRowState();
+}
+
+class _LedgerRowState extends State<LedgerRow> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
+    final w = widget;
+    final onLongPress = w.onLongPress;
+    final date = w.date;
+    final icon = w.icon;
+    final iconColor = w.iconColor;
+    final title = w.title;
+    final subtitle = w.subtitle;
+    final trailingLabel = w.trailingLabel;
+    final trailingAmount = w.trailingAmount;
+    final trailingColor = w.trailingColor;
+    final showAction = _hovered && onLongPress != null;
+
     return InkWell(
-      onTap: onTap,
+      onTap: w.onTap,
       onLongPress: onLongPress,
+      onSecondaryTap: onLongPress,
+      onHover: (hovering) => setState(() => _hovered = hovering),
+      // Rows with only a secondary action still read as clickable.
+      mouseCursor: w.onTap != null || onLongPress != null
+          ? SystemMouseCursors.click
+          : null,
       borderRadius: BorderRadius.circular(10),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -118,13 +153,32 @@ class LedgerRow extends StatelessWidget {
                 ),
                 if (trailingAmount != null)
                   Text(
-                    trailingAmount!,
+                    trailingAmount,
                     style: AppTextStyles.bodyLg.copyWith(
                       color: trailingColor,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
               ],
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 140),
+              curve: Curves.easeOut,
+              child: showAction
+                  ? Padding(
+                      padding: const EdgeInsets.only(left: 4),
+                      child: IconButton(
+                        tooltip: w.actionTooltip,
+                        visualDensity: VisualDensity.compact,
+                        onPressed: onLongPress,
+                        icon: Icon(
+                          w.actionIcon,
+                          size: 20,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
             ),
           ],
         ),

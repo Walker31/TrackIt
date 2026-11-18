@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/app_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../theme/responsive.dart';
@@ -15,13 +16,13 @@ import '../models/expenses.dart';
 import '../widgets/wallet/financial_analysis_card.dart';
 import '../widgets/wallet/transaction_list.dart';
 import '../widgets/wallet/add_expense_sheet.dart';
+import '../widgets/wallet/expense_flows.dart';
 import '../widgets/wallet/events_section.dart';
 import '../widgets/wallet/trips_section.dart';
 import '../widgets/wallet/budgets_card.dart';
 import '../widgets/wallet/create_group_sheet.dart';
 import '../widgets/animated/animated_segmented_tabs.dart';
 import '../widgets/animated/fade_slide_in.dart';
-import '../utils/format.dart';
 
 enum _WalletTab { personal, events, trips }
 
@@ -45,6 +46,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = ref.watch(expenseProviderProvider);
+    final wide = !WindowSize.of(context).usesBottomNav;
     // The tab stays alive between visits, so pick up expenses that change
     // elsewhere (sync, the home tab) in the trip totals too.
     ref.listen(expenseProviderProvider, (_, _) => _tripsRefresh.value++);
@@ -58,7 +60,22 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          const SliverToBoxAdapter(child: PageHeader(title: 'Wallet')),
+          SliverToBoxAdapter(
+            child: PageHeader(
+              title: 'Wallet',
+              actions: [
+                if (wide)
+                  HeaderAddButton(
+                    label: switch (_tab) {
+                      _WalletTab.personal => 'Add expense',
+                      _WalletTab.events => 'New event',
+                      _WalletTab.trips => 'New trip',
+                    },
+                    onPressed: _addForTab,
+                  ),
+              ],
+            ),
+          ),
           SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(
@@ -141,34 +158,40 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
           ),
         ],
       ),
-      floatingActionButton: Padding(
-        padding: EdgeInsets.only(bottom: Responsive.navInset(context)),
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 220),
-          transitionBuilder: (child, animation) =>
-              ScaleTransition(scale: animation, child: child),
-          child: _tab == _WalletTab.personal
-              ? FloatingActionButton(
-                  key: const ValueKey('add_expense'),
-                  onPressed: () => _showAddExpenseSheet(context),
-                  tooltip: 'Add expense',
-                  child: const Icon(Icons.add),
-                )
-              : _tab == _WalletTab.trips
-              ? FloatingActionButton(
-                  key: const ValueKey('new_trip'),
-                  onPressed: _createTrip,
-                  tooltip: 'New trip',
-                  child: const Icon(Icons.add),
-                )
-              : FloatingActionButton(
-                  key: const ValueKey('new_event'),
-                  onPressed: () => _showCreateGroupSheet(context),
-                  tooltip: 'New event',
-                  child: const Icon(Icons.add),
-                ),
-        ),
-      ),
+      // Wide windows have the header button instead.
+      floatingActionButton: wide
+          ? null
+          : Padding(
+              padding: EdgeInsets.only(bottom: Responsive.navInset(context)),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                transitionBuilder: (child, animation) =>
+                    ScaleTransition(scale: animation, child: child),
+                child: _tab == _WalletTab.personal
+                    ? FloatingActionButton(
+                        key: const ValueKey('add_expense'),
+                        onPressed: () => openAddExpense(
+                          context,
+                          ref.read(expenseProviderProvider),
+                        ),
+                        tooltip: 'Add expense',
+                        child: const Icon(Icons.add),
+                      )
+                    : _tab == _WalletTab.trips
+                    ? FloatingActionButton(
+                        key: const ValueKey('new_trip'),
+                        onPressed: _createTrip,
+                        tooltip: 'New trip',
+                        child: const Icon(Icons.add),
+                      )
+                    : FloatingActionButton(
+                        key: const ValueKey('new_event'),
+                        onPressed: () => _showCreateGroupSheet(context),
+                        tooltip: 'New event',
+                        child: const Icon(Icons.add),
+                      ),
+              ),
+            ),
     );
   }
 
@@ -225,38 +248,20 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
     );
   }
 
-  void _showAddExpenseSheet(BuildContext context) {
-    final provider = ref.read(expenseProviderProvider);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => AddExpenseSheet(
-        onAdd: (expense) async {
-          await provider.addExpense(expense);
-          if (!mounted) return;
-          final label =
-              '${formatRupees(expense.amount)} added to '
-              '${provider.categoryOf(expense).name}.';
-          if (provider.monthlySpent > provider.monthlyBudget) {
-            AppSnackbar.warning(
-              this.context,
-              '$label You are over your monthly budget.',
-            );
-          } else {
-            AppSnackbar.success(this.context, label);
-          }
-        },
-      ),
-    );
-  }
+  /// The "add" action of the visible tab (header button on wide windows).
+  void _addForTab() => switch (_tab) {
+    _WalletTab.personal => openAddExpense(
+      context,
+      ref.read(expenseProviderProvider),
+    ),
+    _WalletTab.events => _showCreateGroupSheet(context),
+    _WalletTab.trips => _createTrip(),
+  };
 
   void _showEditExpenseSheet(Expense expense) {
     final provider = ref.read(expenseProviderProvider);
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => AddExpenseSheet(
         initial: expense,
         onAdd: (updated) async {
@@ -273,10 +278,8 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
 
   void _showCreateGroupSheet(BuildContext context) {
     final provider = ref.read(groupProviderProvider);
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (context) => CreateGroupSheet(
         onCreate: (name, icon) async {
           await provider.createGroup(name, icon);

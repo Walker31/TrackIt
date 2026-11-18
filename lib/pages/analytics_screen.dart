@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../layout.dart' show AppTab;
+import '../widgets/wallet/expense_flows.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_providers.dart';
 import '../theme/responsive.dart';
@@ -70,7 +73,13 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                       builder: (context, snapshot) => _fadeIn(
                         !snapshot.hasData && !snapshot.hasError
                             ? const _ChartLoading()
-                            : SpendingChart(data: snapshot.data ?? {}),
+                            : SpendingChart(
+                                data: snapshot.data ?? {},
+                                onAdd: () => openAddExpense(
+                                  context,
+                                  ref.read(expenseProviderProvider),
+                                ),
+                              ),
                       ),
                     ),
                   ),
@@ -88,7 +97,10 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                       builder: (context, snapshot) => _fadeIn(
                         !snapshot.hasData && !snapshot.hasError
                             ? const _ChartLoading()
-                            : VolumeChart(data: snapshot.data ?? {}),
+                            : VolumeChart(
+                                data: snapshot.data ?? {},
+                                onStart: () => context.go(AppTab.workout.path),
+                              ),
                       ),
                     ),
                   ),

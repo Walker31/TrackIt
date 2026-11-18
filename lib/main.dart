@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:trackit/router.dart';
@@ -14,6 +15,11 @@ import 'theme/app_colors.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Flutter web only builds the accessibility tree after a hidden "Enable
+  // accessibility" button is pressed, so screen readers see a blank page.
+  // Build it from the start. Native platforms turn it on when needed.
+  if (kIsWeb) SemanticsBinding.instance.ensureSemantics();
 
   // The bundled Inter font is under the SIL Open Font License, which has to
   // travel with it.

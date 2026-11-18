@@ -31,6 +31,7 @@ class RestTimerOverlay extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           IconButton(
+            tooltip: 'Skip rest',
             onPressed: () => provider.cancelTimer(),
             icon: Icon(Icons.close, color: AppColors.textSecondary, size: 20),
             padding: EdgeInsets.zero,

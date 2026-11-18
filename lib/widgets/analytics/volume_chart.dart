@@ -9,7 +9,10 @@ import 'spending_chart.dart' show niceInterval, chartAxisStyle, ChartHeader;
 class VolumeChart extends StatelessWidget {
   final Map<DateTime, double> data;
 
-  const VolumeChart({super.key, required this.data});
+  /// Offered when the week is empty.
+  final VoidCallback? onStart;
+
+  const VolumeChart({super.key, required this.data, this.onStart});
 
   @override
   Widget build(BuildContext context) {
@@ -24,11 +27,14 @@ class VolumeChart extends StatelessWidget {
 
     final total = data.values.fold<double>(0, (a, b) => a + b);
     if (total <= 0) {
-      return const EmptyState(
+      return EmptyState(
         card: true,
         icon: Icons.show_chart_rounded,
         title: 'No training this week',
         message: 'Complete sets in the Workout tab to see your volume.',
+        actionLabel: onStart == null ? null : 'Start a workout',
+        actionIcon: Icons.fitness_center_rounded,
+        onAction: onStart,
       );
     }
 

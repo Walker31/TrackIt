@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../app_shortcuts.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -151,7 +152,10 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      SaveShortcut(onSave: _save, child: _buildSheet(context));
+
+  Widget _buildSheet(BuildContext context) {
     final others = _others;
     final paid = _direction == SettleDirection.iPaid;
     final otherName = _nameOf(_otherId);
@@ -175,6 +179,7 @@ class _SettleUpSheetState extends State<SettleUpSheet> {
             children: [
               const Text("Settle up", style: AppTextStyles.h2),
               IconButton(
+                tooltip: 'Close',
                 onPressed: () => Navigator.pop(context),
                 icon: const Icon(Icons.close),
               ),

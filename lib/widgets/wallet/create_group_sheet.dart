@@ -50,6 +50,7 @@ class _CreateGroupSheetState extends State<CreateGroupSheet> {
             children: [
               const Text("New event", style: AppTextStyles.h2),
               IconButton(
+                tooltip: 'Close',
                 onPressed: () => Navigator.pop(context),
                 icon: const Icon(Icons.close),
               ),
@@ -70,26 +71,29 @@ class _CreateGroupSheetState extends State<CreateGroupSheet> {
                   padding: const EdgeInsets.only(right: 8),
                   // A fixed square tile: chips squeezed the emoji glyphs
                   // and clipped them (notably on web).
-                  child: GestureDetector(
-                    onTap: () => setState(() => _selectedIcon = icon),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      width: 50,
-                      height: 50,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppColors.primary.withValues(alpha: 0.14)
-                            : AppColors.surfaceVariant,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: () => setState(() => _selectedIcon = icon),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        width: 50,
+                        height: 50,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
                           color: isSelected
-                              ? AppColors.primary
-                              : Colors.transparent,
-                          width: 1.5,
+                              ? AppColors.primary.withValues(alpha: 0.14)
+                              : AppColors.surfaceVariant,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isSelected
+                                ? AppColors.primary
+                                : Colors.transparent,
+                            width: 1.5,
+                          ),
                         ),
+                        child: Text(icon, style: const TextStyle(fontSize: 24)),
                       ),
-                      child: Text(icon, style: const TextStyle(fontSize: 24)),
                     ),
                   ),
                 );

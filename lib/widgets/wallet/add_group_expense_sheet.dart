@@ -1,5 +1,7 @@
 import '../expense_entry_fields.dart';
 import 'package:flutter/material.dart';
+import '../app_shortcuts.dart';
+import '../app_sheet.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../models/expenses.dart';
@@ -246,7 +248,10 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      SaveShortcut(onSave: _save, child: _buildSheet(context));
+
+  Widget _buildSheet(BuildContext context) {
     final insets = MediaQuery.viewInsetsOf(context);
     // Room left above the keyboard, so the sheet never pushes past the
     // status bar on short phones or in landscape.
@@ -507,9 +512,8 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
 
   Future<void> _choosePayer() async {
     FocusScope.of(context).unfocus();
-    final picked = await showModalBottomSheet<int>(
+    final picked = await showAppSheet<int>(
       context: context,
-      backgroundColor: Colors.transparent,
       builder: (sheetContext) => GlassContainer(
         sheet: true,
         borderRadius: 24,
@@ -540,10 +544,8 @@ class _AddGroupExpenseSheetState extends State<AddGroupExpenseSheet> {
 
   Future<void> _chooseSplit() async {
     FocusScope.of(context).unfocus();
-    await showModalBottomSheet<void>(
+    await showAppSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheet) {
           // Keep this sheet and the expense sheet behind it in step.

@@ -109,6 +109,8 @@ class TransactionList extends StatelessWidget {
                 final id = e.id;
                 if (id != null) _confirmDelete(context, id);
               },
+              actionIcon: Icons.delete_outline_rounded,
+              actionTooltip: 'Delete',
             ),
           ),
         ),

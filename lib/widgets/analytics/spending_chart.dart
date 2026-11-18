@@ -4,12 +4,16 @@ import 'package:intl/intl.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../app_card.dart';
+import '../empty_state.dart';
 import '../../utils/format.dart';
 
 class SpendingChart extends StatelessWidget {
   final Map<DateTime, double> data;
 
-  const SpendingChart({super.key, required this.data});
+  /// Offered when the week is empty, instead of a flat chart.
+  final VoidCallback? onAdd;
+
+  const SpendingChart({super.key, required this.data, this.onAdd});
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +33,17 @@ class SpendingChart extends StatelessWidget {
     }).toList();
 
     final peak = data.values.fold<double>(0, (a, b) => a > b ? a : b);
-    final maxY = peak <= 0 ? 100.0 : peak * 1.2;
+    if (peak <= 0) {
+      return EmptyState(
+        card: true,
+        icon: Icons.bar_chart_rounded,
+        title: 'Nothing spent this week',
+        message: 'Your daily spending for the last 7 days shows up here.',
+        actionLabel: onAdd == null ? null : 'Add expense',
+        onAction: onAdd,
+      );
+    }
+    final maxY = peak * 1.2;
     final interval = niceInterval(maxY);
 
     final total = data.values.fold<double>(0, (a, b) => a + b);

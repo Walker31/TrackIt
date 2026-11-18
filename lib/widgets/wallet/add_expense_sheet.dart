@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../app_shortcuts.dart';
+import '../app_sheet.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../theme/app_colors.dart';
@@ -254,7 +256,10 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      SaveShortcut(onSave: _save, child: _buildSheet(context));
+
+  Widget _buildSheet(BuildContext context) {
     final isIncome = _type == TxnType.income;
     final accent = isIncome ? AppColors.income : AppColors.outflow;
     final insets = MediaQuery.viewInsetsOf(context);
@@ -582,6 +587,8 @@ class _DragHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Nothing to drag when the sheet is a dialog.
+    if (SheetPresentation.isDialog(context)) return const SizedBox(height: 4);
     return Center(
       child: Container(
         margin: const EdgeInsets.only(top: 10),

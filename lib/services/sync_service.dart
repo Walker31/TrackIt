@@ -202,8 +202,20 @@ class SyncService {
     // Local mode never talks to a server.
     if (!AppModeService.isServer) return Future.value();
     if (forcePull) _forcePull = true;
-    return _runner.run();
+    // Every local write ends up here, even offline: status displays use
+    // this to recount what is waiting to upload.
+    _activity.add(null);
+    final run = _runner.run();
+    run.whenComplete(() => _activity.add(null));
+    return run;
   }
+
+  /// A sync was requested or finished (see [performSync]).
+  Stream<void> get onActivity => _activity.stream;
+  final _activity = StreamController<void>.broadcast();
+
+  /// True while a sync pass is running.
+  bool get isSyncing => _runner.isRunning;
 
   /// Edits push straight away, but pulling every entity after each one
   /// costs ~10 requests; pulls run at most this often unless forced.
