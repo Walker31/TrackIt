@@ -36,23 +36,35 @@ class EventsSection extends StatefulWidget {
 class _EventsSectionState extends State<EventsSection> {
   List<Group>? _loadedFor;
   bool? _loadedShared;
-  late Future<List<double>> _amounts;
+  late Future<Map<int, double>> _amounts;
 
-  /// Your balance (shared) or total spent (offline) in each event,
-  /// refetched only when the list or the mode changes.
-  Future<List<double>> _amountsFor(List<Group> groups) {
+  /// Your balance (shared) or total spent (offline) in each event, by
+  /// group id, refetched only when the list or the mode changes.
+  ///
+  /// Keyed by id, not position: while a new list's amounts load,
+  /// FutureBuilder still hands out the previous list's, which may be
+  /// shorter or in another order (an event was just added or removed).
+  Future<Map<int, double>> _amountsFor(List<Group> groups) {
     if (!identical(groups, _loadedFor) || _loadedShared != widget.shared) {
       _loadedFor = groups;
       _loadedShared = widget.shared;
       final provider = widget.provider;
-      _amounts = Future.wait([
-        for (final g in groups)
-          widget.shared
-              ? provider.getMyBalance(g.id!)
-              : provider
-                    .getGroupExpenses(g.id!)
-                    .then((es) => es.fold<double>(0, (t, e) => t + e.amount)),
-      ]);
+      final ids = [for (final g in groups) g.id!];
+      _amounts =
+          Future.wait([
+            for (final id in ids)
+              widget.shared
+                  ? provider.getMyBalance(id)
+                  : provider
+                        .getGroupExpenses(id)
+                        .then(
+                          (es) => es.fold<double>(0, (t, e) => t + e.amount),
+                        ),
+          ]).then(
+            (amounts) => {
+              for (var i = 0; i < ids.length; i++) ids[i]: amounts[i],
+            },
+          );
     }
     return _amounts;
   }
@@ -81,7 +93,7 @@ class _EventsSectionState extends State<EventsSection> {
       );
     }
 
-    return FutureBuilder<List<double>>(
+    return FutureBuilder<Map<int, double>>(
       future: _amountsFor(groups),
       builder: (context, snapshot) {
         final balances = snapshot.data;
@@ -89,7 +101,12 @@ class _EventsSectionState extends State<EventsSection> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (balances != null && widget.shared)
-              _OverallBalance(balances: balances),
+              _OverallBalance(
+                balances: [
+                  for (final g in groups)
+                    if (balances[g.id] != null) balances[g.id]!,
+                ],
+              ),
             FadeSlideIn(
               child: AppCard(
                 padding: EdgeInsets.zero,
@@ -99,7 +116,7 @@ class _EventsSectionState extends State<EventsSection> {
                       if (i > 0) const Divider(height: 1, indent: 82),
                       GroupCard(
                         group: groups[i],
-                        myBalance: balances?[i] ?? 0,
+                        myBalance: balances?[groups[i].id] ?? 0,
                         shared: widget.shared,
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(

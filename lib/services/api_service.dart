@@ -90,9 +90,11 @@ class ApiService {
   static int connectionFailures = 0;
   static const _refreshPath = 'auth/token/refresh/';
 
-  /// Login/register/refresh failures are real answers, not expired tokens.
+  /// Login/register/refresh/logout failures are real answers, not expired
+  /// tokens.
   static bool _isAuthPath(String path) =>
       path.contains('auth/login') ||
+      path.contains('auth/logout') ||
       path.contains('auth/register') ||
       path.contains('auth/token');
 
