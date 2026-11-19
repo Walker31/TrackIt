@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import '../layout.dart' show AppTab;
+import '../widgets/wallet/expense_flows.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/app_providers.dart';
 import '../theme/responsive.dart';
 import '../widgets/animated/fade_slide_in.dart';
 import '../widgets/app_card.dart';
@@ -10,22 +15,30 @@ import '../widgets/analytics/monthly_report_card.dart';
 import '../widgets/analytics/spending_chart.dart';
 import '../widgets/analytics/volume_chart.dart';
 
-class AnalyticsScreen extends StatefulWidget {
+class AnalyticsScreen extends ConsumerStatefulWidget {
   const AnalyticsScreen({super.key});
 
   @override
-  State<AnalyticsScreen> createState() => _AnalyticsScreenState();
+  ConsumerState<AnalyticsScreen> createState() => _AnalyticsScreenState();
 }
 
-class _AnalyticsScreenState extends State<AnalyticsScreen> {
-  // Fetched once per visit: the tab is rebuilt fresh each time it opens.
-  late final Future<Map<DateTime, double>> _spending = ExpenseService()
+class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
+  // The tab stays alive between visits, so charts reload when the
+  // underlying expenses or workouts change rather than on every visit.
+  late Future<Map<DateTime, double>> _spending = ExpenseService()
       .getWeeklyExpenseData();
-  late final Future<Map<DateTime, double>> _volume = WorkoutService()
+  late Future<Map<DateTime, double>> _volume = WorkoutService()
       .getWeeklyVolumeData();
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(expenseProviderProvider, (_, _) {
+      setState(() => _spending = ExpenseService().getWeeklyExpenseData());
+    });
+    ref.listen(workoutProviderProvider, (_, _) {
+      setState(() => _volume = WorkoutService().getWeeklyVolumeData());
+    });
+
     return Scaffold(
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
@@ -44,7 +57,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 left: [
                   const FadeSlideIn(child: SectionHeader(title: 'This month')),
                   const SizedBox(height: 12),
-                  const FadeSlideIn(index: 1, child: MonthlyReportCard()),
+                  FadeSlideIn(
+                    index: 1,
+                    child: MonthlyReportCard(
+                      expenses: ref.watch(expenseProviderProvider),
+                    ),
+                  ),
                   const SizedBox(height: 32),
                   const FadeSlideIn(child: SectionHeader(title: "Spending")),
                   const SizedBox(height: 12),
@@ -53,9 +71,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     child: FutureBuilder<Map<DateTime, double>>(
                       future: _spending,
                       builder: (context, snapshot) => _fadeIn(
-                        snapshot.connectionState == ConnectionState.waiting
+                        !snapshot.hasData && !snapshot.hasError
                             ? const _ChartLoading()
-                            : SpendingChart(data: snapshot.data ?? {}),
+                            : SpendingChart(
+                                data: snapshot.data ?? {},
+                                onAdd: () => openAddExpense(
+                                  context,
+                                  ref.read(expenseProviderProvider),
+                                ),
+                              ),
                       ),
                     ),
                   ),
@@ -71,9 +95,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     child: FutureBuilder<Map<DateTime, double>>(
                       future: _volume,
                       builder: (context, snapshot) => _fadeIn(
-                        snapshot.connectionState == ConnectionState.waiting
+                        !snapshot.hasData && !snapshot.hasError
                             ? const _ChartLoading()
-                            : VolumeChart(data: snapshot.data ?? {}),
+                            : VolumeChart(
+                                data: snapshot.data ?? {},
+                                onStart: () => context.go(AppTab.workout.path),
+                              ),
                       ),
                     ),
                   ),

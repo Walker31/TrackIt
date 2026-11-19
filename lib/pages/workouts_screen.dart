@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/app_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/responsive.dart';
 import '../widgets/animated/fade_slide_in.dart';
@@ -32,6 +33,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final wide = !WindowSize.of(context).usesBottomNav;
     final provider = ref.watch(workoutProviderProvider);
     final workout = provider.todayWorkout;
 
@@ -47,7 +49,18 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
           CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
-              const SliverToBoxAdapter(child: PageHeader(title: 'Workout')),
+              SliverToBoxAdapter(
+                child: PageHeader(
+                  title: 'Workout',
+                  actions: [
+                    if (wide)
+                      HeaderAddButton(
+                        label: 'Add exercise',
+                        onPressed: () => _showAddExerciseSheet(context),
+                      ),
+                  ],
+                ),
+              ),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
@@ -116,7 +129,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
             ],
           ),
           Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
+            top: MediaQuery.paddingOf(context).top + 10,
             left: 20,
             right: 20,
             child: AnimatedSwitcher(
@@ -140,14 +153,16 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
           ),
         ],
       ),
-      floatingActionButton: Padding(
-        padding: EdgeInsets.only(bottom: Responsive.navInset(context)),
-        child: FloatingActionButton(
-          onPressed: () => _showAddExerciseSheet(context),
-          tooltip: 'Add exercise',
-          child: const Icon(Icons.add),
-        ),
-      ),
+      floatingActionButton: wide
+          ? null
+          : Padding(
+              padding: EdgeInsets.only(bottom: Responsive.navInset(context)),
+              child: FloatingActionButton(
+                onPressed: () => _showAddExerciseSheet(context),
+                tooltip: 'Add exercise',
+                child: const Icon(Icons.add),
+              ),
+            ),
     );
   }
 
@@ -227,17 +242,14 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
 
   void _showAddExerciseSheet(BuildContext context) {
     final provider = ref.read(workoutProviderProvider);
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (context) => _AddExerciseSheet(
         onAdd: (exercise) {
           provider.addExercise(exercise);
           AppSnackbar.success(
             this.context,
             '${exercise.name} added to today\'s workout.',
-            aboveNav: true,
           );
         },
       ),
@@ -246,17 +258,14 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
 
   void _showCreateRoutineSheet(BuildContext context) {
     final provider = ref.read(workoutProviderProvider);
-    showModalBottomSheet(
+    showAppSheet(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (context) => _CreateRoutineSheet(
         onSave: (routine) {
           provider.addRoutine(routine);
           AppSnackbar.success(
             this.context,
             'Routine "${routine.name}" created.',
-            aboveNav: true,
           );
         },
       ),
@@ -280,7 +289,7 @@ class _CreateRoutineSheetState extends State<_CreateRoutineSheet> {
   Widget build(BuildContext context) {
     return GlassContainer(
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 24,
         top: 24,
         left: 24,
         right: 24,
@@ -361,7 +370,7 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
   Widget build(BuildContext context) {
     return GlassContainer(
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 24,
         top: 24,
         left: 24,
         right: 24,
@@ -399,12 +408,14 @@ class _AddExerciseSheetState extends State<_AddExerciseSheet> {
               Row(
                 children: [
                   IconButton(
+                    tooltip: 'Fewer sets',
                     onPressed: () =>
                         setState(() => _setsCount > 1 ? _setsCount-- : 1),
                     icon: const Icon(Icons.remove),
                   ),
                   Text("$_setsCount", style: AppTextStyles.h3),
                   IconButton(
+                    tooltip: 'More sets',
                     onPressed: () => setState(() => _setsCount++),
                     icon: const Icon(Icons.add),
                   ),

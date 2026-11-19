@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../app_shortcuts.dart';
+import '../app_sheet.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../../theme/app_colors.dart';
@@ -13,8 +15,8 @@ import '../app_button.dart';
 import '../../models/expenses.dart';
 import '../../utils/format.dart';
 
-/// Bottom-sheet transaction entry: type toggle, a large amount and note,
-/// the category grid, then optional subcategory / date / payment / trip.
+/// Bottom-sheet transaction entry: type toggle, Splitwise-style description
+/// and amount rows, the category grid, then subcategory / date / payment / trip.
 class AddExpenseSheet extends StatefulWidget {
   final Function(Expense) onAdd;
 
@@ -254,16 +256,26 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      SaveShortcut(onSave: _save, child: _buildSheet(context));
+
+  Widget _buildSheet(BuildContext context) {
     final isIncome = _type == TxnType.income;
     final accent = isIncome ? AppColors.income : AppColors.outflow;
-    final media = MediaQuery.of(context);
+    final insets = MediaQuery.viewInsetsOf(context);
+    // Room left above the keyboard, so the sheet never pushes past the
+    // status bar on short phones or in landscape.
+    final maxHeight =
+        (MediaQuery.sizeOf(context).height -
+            insets.bottom -
+            MediaQuery.paddingOf(context).top) *
+        0.92;
     final amount = _amount;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+      padding: EdgeInsets.only(bottom: insets.bottom),
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: media.size.height * 0.92),
+        constraints: BoxConstraints(maxHeight: maxHeight),
         child: GlassContainer(
           borderRadius: 24,
           sheet: true,
@@ -273,18 +285,16 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
             children: [
               const _DragHandle(),
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 10, 12, 0),
+                padding: const EdgeInsets.fromLTRB(24, 6, 12, 0),
                 child: Row(
                   children: [
-                    SizedBox(
-                      width: 220,
-                      child: AnimatedSegmentedTabs(
-                        labels: const ['Expense', 'Income'],
-                        selectedIndex: _type.index,
-                        onChanged: (i) => _setType(TxnType.values[i]),
+                    Expanded(
+                      child: Text(
+                        '${_editing ? 'Edit' : 'Add'} '
+                        '${isIncome ? 'income' : 'expense'}',
+                        style: AppTextStyles.h3,
                       ),
                     ),
-                    const Spacer(),
                     IconButton(
                       onPressed: () => Navigator.pop(context),
                       icon: const Icon(Icons.close_rounded),
@@ -295,10 +305,21 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
               ),
               Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 28, 24, 16),
+                  padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Center(
+                        child: SizedBox(
+                          width: 220,
+                          child: AnimatedSegmentedTabs(
+                            labels: const ['Expense', 'Income'],
+                            selectedIndex: _type.index,
+                            onChanged: (i) => _setType(TxnType.values[i]),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
                       FadeSlideIn(
                         child: ExpenseEntryFields(
                           descriptionController: _descController,
@@ -566,6 +587,8 @@ class _DragHandle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Nothing to drag when the sheet is a dialog.
+    if (SheetPresentation.isDialog(context)) return const SizedBox(height: 4);
     return Center(
       child: Container(
         margin: const EdgeInsets.only(top: 10),

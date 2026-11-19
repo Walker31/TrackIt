@@ -67,6 +67,33 @@ class AppModeService {
 
   Future<String> getServerUrl() async => ApiService.baseUrl;
 
+  /// Settings key for the account whose data is on this device.
+  static const accountKey = 'account';
+
+  /// The account whose data is on this device (`username@server`), or null
+  /// if it has only been used without one.
+  Future<String?> account() => _read(accountKey);
+
+  static String _accountId(String username) =>
+      '$username@${ApiService.baseUrl}';
+
+  /// Call on signing in as [username], before anything syncs. Another
+  /// account's data must not show to, or upload into, this one, so it is
+  /// cleared first. Data made without an account stays and uploads.
+  Future<void> adoptAccount(String username) async {
+    final next = _accountId(username);
+    final previous = await account();
+    if (previous != null && previous != next) {
+      await _dbService.clearUserData();
+    }
+    await _write(accountKey, next);
+  }
+
+  /// Installs from before accounts were recorded: note the signed-in one.
+  Future<void> rememberAccount(String username) async {
+    if (await account() == null) await _write(accountKey, _accountId(username));
+  }
+
   Future<String?> _read(String key) async {
     final db = await _dbService.getDatabase();
     final rows = await db.query('settings', where: 'key = ?', whereArgs: [key]);

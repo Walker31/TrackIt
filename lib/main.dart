@@ -1,16 +1,32 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:trackit/router.dart';
 import 'package:trackit/services/app_mode_service.dart';
 import 'package:trackit/services/database_service.dart';
 import 'package:trackit/providers/app_providers.dart';
 import 'package:trackit/services/notification_service.dart';
+import 'package:trackit/services/sync_triggers.dart';
 
 import 'theme/app_theme.dart';
 import 'theme/app_colors.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Flutter web only builds the accessibility tree after a hidden "Enable
+  // accessibility" button is pressed, so screen readers see a blank page.
+  // Build it from the start. Native platforms turn it on when needed.
+  if (kIsWeb) SemanticsBinding.instance.ensureSemantics();
+
+  // The bundled Inter font is under the SIL Open Font License, which has to
+  // travel with it.
+  LicenseRegistry.addLicense(() async* {
+    final license = await rootBundle.loadString('assets/fonts/inter/OFL.txt');
+    yield LicenseEntryWithLineBreaks(const ['Inter'], license);
+  });
 
   // Initialize services
   await DatabaseService.initialize();
@@ -19,6 +35,10 @@ void main() async {
   await DatabaseService().getDatabase();
   await AppModeService().load();
   await NotificationService().initialize();
+
+  // Upload offline changes on reconnect, on returning to the app, and on a
+  // backoff while the server is unreachable. Lives as long as the app.
+  SyncTriggers.forApp().start();
 
   // Schedule a daily check-in reminder (e.g., at 8 PM)
   NotificationService().scheduleDailyReminder(
@@ -77,6 +97,17 @@ class App extends ConsumerWidget {
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
       routerConfig: goRouter,
+      // Honour the system font size, but cap it: past ~1.3x the fixed-height
+      // cards and chart labels start to clip on phone-width screens.
+      builder: (context, child) {
+        final scaler = MediaQuery.textScalerOf(
+          context,
+        ).clamp(minScaleFactor: 0.85, maxScaleFactor: 1.3);
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: scaler),
+          child: child!,
+        );
+      },
     );
   }
 }

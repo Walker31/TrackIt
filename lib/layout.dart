@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:trackit/providers/app_providers.dart';
+import 'package:trackit/widgets/app_shortcuts.dart';
+import 'package:trackit/widgets/wallet/expense_flows.dart';
 import 'package:trackit/pages/home_screen.dart';
 import 'package:trackit/pages/wallet_screen.dart';
 import 'package:trackit/pages/analytics_screen.dart';
@@ -8,20 +13,61 @@ import 'package:trackit/theme/app_colors.dart';
 import 'package:trackit/theme/app_text_styles.dart';
 import 'package:trackit/theme/responsive.dart';
 import 'package:trackit/widgets/brand_mark.dart';
+import 'package:trackit/widgets/sync_status.dart';
+
+/// The main tabs, each with its own address so the browser's back button,
+/// refresh and bookmarks land on the right one.
+enum AppTab {
+  home('/home', 'Today'),
+  wallet('/wallet', 'Wallet'),
+  workout('/workout', 'Workout'),
+  stats('/stats', 'Stats');
+
+  const AppTab(this.path, this.title);
+  final String path;
+
+  /// Shown in the browser tab / app switcher.
+  final String title;
+}
 
 /// App shell: bottom navigation on phones, a side rail on wider windows
 /// (collapsed on tablets, with labels on desktop).
 class Layout extends StatefulWidget {
-  const Layout({super.key});
+  final AppTab tab;
+
+  const Layout({super.key, this.tab = AppTab.home});
 
   @override
   State<Layout> createState() => _LayoutState();
 }
 
-class _LayoutState extends State<Layout> {
-  int _currentIndex = 0;
+class _LayoutState extends State<Layout> with SingleTickerProviderStateMixin {
+  late int _currentIndex = widget.tab.index;
 
-  late List<Widget> _pages;
+  late final List<Widget> _pages;
+
+  /// Tabs opened so far. A tab is built on its first visit and then kept
+  /// alive, so its scroll position and in-progress state survive switching.
+  late final Set<int> _visited = {_currentIndex};
+
+  /// Keeps the tab pages' state when a window resize swaps the bottom bar
+  /// for the side rail and the pages move to a different spot in the tree.
+  final _pagesKey = GlobalKey();
+
+  /// Fades and lifts the newly selected tab in.
+  late final AnimationController _enter = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 240),
+    value: 1,
+  );
+  late final Animation<double> _enterCurve = CurvedAnimation(
+    parent: _enter,
+    curve: Curves.easeOutCubic,
+  );
+  late final Animation<Offset> _enterOffset = Tween<Offset>(
+    begin: const Offset(0, 0.015),
+    end: Offset.zero,
+  ).animate(_enterCurve);
 
   static const _items = [
     (Icons.home_outlined, Icons.home_rounded, 'Home'),
@@ -45,15 +91,34 @@ class _LayoutState extends State<Layout> {
     ];
   }
 
+  @override
+  void dispose() {
+    _enter.dispose();
+    super.dispose();
+  }
+
+  /// Tab taps go through the router; the new route rebuilds this shell
+  /// with the new [Layout.tab] (see [didUpdateWidget]).
   void _select(int index) {
     if (index == _currentIndex) return;
     HapticFeedback.selectionClick();
-    setState(() => _currentIndex = index);
+    context.go(AppTab.values[index].path);
+  }
+
+  @override
+  void didUpdateWidget(Layout oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final index = widget.tab.index;
+    if (index == _currentIndex) return;
+    setState(() {
+      _currentIndex = index;
+      _visited.add(index);
+    });
+    _enter.forward(from: 0);
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final size = WindowSize.of(context);
 
     final content = Center(
@@ -65,54 +130,74 @@ class _LayoutState extends State<Layout> {
       ),
     );
 
-    if (size.usesBottomNav) {
-      return Scaffold(
-        backgroundColor: theme.scaffoldBackgroundColor,
-        body: Stack(
-          children: [
-            Positioned.fill(child: content),
-            Positioned(left: 0, right: 0, bottom: 0, child: _buildBottomBar()),
-          ],
+    return Title(
+      title: '${widget.tab.title} · TrackIt',
+      color: AppColors.primary,
+      child: AppShortcuts(
+        onTab: _select,
+        onNewExpense: () => openAddExpense(
+          context,
+          ProviderScope.containerOf(context).read(expenseProviderProvider),
         ),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      body: Row(
-        children: [
-          _SideNav(
-            items: _items,
-            selectedIndex: _currentIndex,
-            extended: size == WindowSize.expanded,
-            onSelect: _select,
-          ),
-          Expanded(child: content),
-        ],
+        child: size.usesBottomNav ? _phoneShell(content) : _railShell(content),
       ),
     );
   }
 
-  Widget _pageSwitcher() {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 240),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeIn,
-      transitionBuilder: (child, animation) => FadeTransition(
-        opacity: animation,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 0.015),
-            end: Offset.zero,
-          ).animate(animation),
-          child: child,
+  Widget _phoneShell(Widget content) => Scaffold(
+    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+    body: Stack(
+      children: [
+        Positioned.fill(child: content),
+        Positioned(left: 0, right: 0, bottom: 0, child: _buildBottomBar()),
+      ],
+    ),
+  );
+
+  Widget _railShell(Widget content) => Scaffold(
+    backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+    body: Row(
+      children: [
+        _SideNav(
+          items: _items,
+          selectedIndex: _currentIndex,
+          extended: WindowSize.of(context) == WindowSize.expanded,
+          onSelect: _select,
         ),
-      ),
-      layoutBuilder: (current, previous) =>
-          Stack(fit: StackFit.expand, children: [...previous, ?current]),
-      child: KeyedSubtree(
-        key: ValueKey(_currentIndex),
-        child: _pages[_currentIndex],
+        Expanded(child: content),
+      ],
+    ),
+  );
+
+  Widget _pageSwitcher() {
+    return KeyedSubtree(
+      key: _pagesKey,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          for (var i = 0; i < _pages.length; i++)
+            // Same widget structure whether a tab is showing or not, so
+            // switching never rebuilds a tab from scratch.
+            Offstage(
+              offstage: i != _currentIndex,
+              child: TickerMode(
+                enabled: i == _currentIndex,
+                child: FadeTransition(
+                  opacity: i == _currentIndex
+                      ? _enterCurve
+                      : kAlwaysCompleteAnimation,
+                  child: SlideTransition(
+                    position: i == _currentIndex
+                        ? _enterOffset
+                        : const AlwaysStoppedAnimation(Offset.zero),
+                    child: _visited.contains(i)
+                        ? _pages[i]
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -149,9 +234,11 @@ class _LayoutState extends State<Layout> {
     final (icon, activeIcon, label) = _items[index];
     final isSelected = _currentIndex == index;
     final color = isSelected ? AppColors.primary : AppColors.textTertiary;
-    return GestureDetector(
+    return InkWell(
       onTap: () => _select(index),
-      behavior: HitTestBehavior.opaque,
+      splashFactory: NoSplash.splashFactory,
+      highlightColor: Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Column(
@@ -246,6 +333,35 @@ class _SideNav extends StatelessWidget {
                     selected: i == selectedIndex,
                     extended: extended,
                     onTap: () => onSelect(i),
+                  ),
+                ),
+              const Spacer(),
+              // Status and settings live at the foot of the rail on wide
+              // windows, where page headers leave them out.
+              SyncStatusIndicator(expanded: extended),
+              const SizedBox(height: 6),
+              _SideNavItem(
+                item: const (
+                  Icons.settings_outlined,
+                  Icons.settings,
+                  'Settings',
+                ),
+                selected: false,
+                extended: extended,
+                onTap: () => context.push('/settings'),
+              ),
+              if (extended)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: _SideNavItem(
+                    item: const (
+                      Icons.keyboard_outlined,
+                      Icons.keyboard,
+                      'Shortcuts',
+                    ),
+                    selected: false,
+                    extended: extended,
+                    onTap: () => showShortcutHelp(context),
                   ),
                 ),
             ],

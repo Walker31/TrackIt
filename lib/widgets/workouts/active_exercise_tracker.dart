@@ -76,13 +76,11 @@ class ActiveExerciseTracker extends StatelessWidget {
                           ? '${exercise.name} complete — great work!'
                           : 'Set ${current.setNumber} logged: '
                                 '${formatWeight(weight)} kg × $reps',
-                      aboveNav: true,
                     );
                   }
                 : () => AppSnackbar.info(
                     context,
                     'All sets for ${exercise.name} are already done.',
-                    aboveNav: true,
                   ),
           ),
         ],
@@ -136,6 +134,9 @@ class ActiveExerciseTracker extends StatelessWidget {
 
   Widget _stepButton(IconData icon, VoidCallback onTap, Color color) =>
       IconButton(
+        tooltip: icon == Icons.remove || icon == Icons.remove_rounded
+            ? 'Decrease'
+            : 'Increase',
         onPressed: onTap,
         visualDensity: VisualDensity.compact,
         constraints: const BoxConstraints.tightFor(width: 40, height: 40),

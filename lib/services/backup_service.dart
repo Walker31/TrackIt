@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'app_mode_service.dart';
 import 'database_service.dart';
 import 'sync_outbox.dart';
 
@@ -51,6 +52,7 @@ class BackupService {
     final k = key?.toString() ?? '';
     return k == 'app_mode' ||
         k == 'server_url' ||
+        k == AppModeService.accountKey ||
         k.startsWith('last_sync_') ||
         k.startsWith('sync_');
   }
@@ -153,12 +155,12 @@ class BackupService {
       // were refilled would cascade-delete the restored child rows.
       for (final table in tables) {
         if (table == 'settings') {
-          // This install keeps its mode and server; sync cursors go, so the
-          // next sync does a full pull against the restored data.
+          // This install keeps its mode, server and account; sync cursors
+          // go, so the next sync does a full pull against the restored data.
           await txn.delete(
             'settings',
-            where: 'key NOT IN (?, ?)',
-            whereArgs: ['app_mode', 'server_url'],
+            where: 'key NOT IN (?, ?, ?)',
+            whereArgs: ['app_mode', 'server_url', AppModeService.accountKey],
           );
         } else {
           await txn.delete(table);

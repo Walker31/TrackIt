@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueKey;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:trackit/pages/splash_screen.dart';
@@ -8,6 +9,8 @@ import 'package:trackit/pages/auth/welcome_page.dart';
 import 'package:trackit/pages/auth/register_page.dart';
 import 'package:trackit/providers/auth_provider.dart';
 import 'package:trackit/theme/app_transitions.dart';
+
+const _shellKey = ValueKey('app-shell');
 
 final routerProvider = Provider<GoRouter>((ref) {
   // read, not watch: watching a ChangeNotifierProvider rebuilds on every
@@ -59,10 +62,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/register',
         pageBuilder: (context, state) => appPage(state, const RegisterPage()),
       ),
-      GoRoute(
-        path: '/home',
-        pageBuilder: (context, state) => appPage(state, const Layout()),
-      ),
+      // One route per tab so the address bar, back button, refresh and
+      // bookmarks follow the tab. They share a page key, so switching tabs
+      // updates the one shell in place instead of pushing a new page.
+      for (final tab in AppTab.values)
+        GoRoute(
+          path: tab.path,
+          pageBuilder: (context, state) =>
+              appPage(state, Layout(tab: tab), key: _shellKey),
+        ),
       GoRoute(
         path: '/settings',
         pageBuilder: (context, state) => appPage(state, const SettingsPage()),

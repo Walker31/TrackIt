@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../widgets/app_sheet.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -305,10 +306,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _editBudget(double current) async {
-    final saved = await showModalBottomSheet<double>(
+    final saved = await showAppSheet<double>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => _BudgetSheet(initial: current),
     );
     if (saved == null) return;
@@ -551,7 +550,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _handleLogout() async {
     final go = await _confirmLeavingServer(
       title: 'Log out?',
-      message: 'Your data stays on this device. Sign in again to sync.',
+      message:
+          'Your data stays on this device. Sign in again to sync; '
+          'signing in to a different account clears it.',
       action: 'Log out',
     );
     if (go && mounted) {
@@ -698,7 +699,7 @@ class _BudgetSheetState extends State<_BudgetSheet> {
         left: 24,
         right: 24,
         top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        bottom: MediaQuery.viewInsetsOf(context).bottom + 24,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

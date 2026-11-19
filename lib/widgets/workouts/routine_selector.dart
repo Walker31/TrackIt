@@ -51,6 +51,7 @@ class RoutineSelector extends StatelessWidget {
                   child: InkWell(
                     onTap: () => provider.startWorkoutFromRoutine(routine),
                     onLongPress: () => _confirmDelete(context, routine),
+                    onSecondaryTap: () => _confirmDelete(context, routine),
                     borderRadius: BorderRadius.circular(16),
                     child: GlassContainer(
                       padding: const EdgeInsets.symmetric(horizontal: 16),

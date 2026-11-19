@@ -17,18 +17,29 @@ class _TapScaleState extends State<TapScale> {
 
   void _setScale(double value) => setState(() => _scale = value);
 
+  bool _hovered = false;
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.onTap,
-      onTapDown: (_) => _setScale(0.97),
-      onTapUp: (_) => _setScale(1.0),
-      onTapCancel: () => _setScale(1.0),
-      child: AnimatedScale(
-        scale: _scale,
-        duration: const Duration(milliseconds: 120),
-        curve: Curves.easeOut,
-        child: widget.child,
+    final tappable = widget.onTap != null;
+    // With a mouse, a tappable card lifts slightly and shows the hand
+    // cursor, so it reads as clickable before it is clicked.
+    final scale = _scale < 1 ? _scale : (_hovered ? 1.01 : 1.0);
+    return MouseRegion(
+      cursor: tappable ? SystemMouseCursors.click : MouseCursor.defer,
+      onEnter: tappable ? (_) => setState(() => _hovered = true) : null,
+      onExit: tappable ? (_) => setState(() => _hovered = false) : null,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        onTapDown: (_) => _setScale(0.97),
+        onTapUp: (_) => _setScale(1.0),
+        onTapCancel: () => _setScale(1.0),
+        child: AnimatedScale(
+          scale: scale,
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          child: widget.child,
+        ),
       ),
     );
   }

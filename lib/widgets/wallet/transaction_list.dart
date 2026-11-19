@@ -38,7 +38,6 @@ class TransactionList extends StatelessWidget {
     AppSnackbar.info(
       context,
       '${formatRupees(expense.amount)} ${expense.isIncome ? 'income' : 'expense'} deleted.',
-      aboveNav: true,
       actionLabel: 'Undo',
       onAction: () => provider.addExpense(
         Expense(
@@ -110,6 +109,8 @@ class TransactionList extends StatelessWidget {
                 final id = e.id;
                 if (id != null) _confirmDelete(context, id);
               },
+              actionIcon: Icons.delete_outline_rounded,
+              actionTooltip: 'Delete',
             ),
           ),
         ),

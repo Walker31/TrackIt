@@ -50,9 +50,13 @@ class AppPageTransitionsBuilder extends PageTransitionsBuilder {
 }
 
 /// [appPageTransition] for go_router routes.
-CustomTransitionPage<void> appPage(GoRouterState state, Widget child) {
+CustomTransitionPage<void> appPage(
+  GoRouterState state,
+  Widget child, {
+  LocalKey? key,
+}) {
   return CustomTransitionPage<void>(
-    key: state.pageKey,
+    key: key ?? state.pageKey,
     transitionDuration: const Duration(milliseconds: 320),
     reverseTransitionDuration: const Duration(milliseconds: 240),
     transitionsBuilder: (context, animation, secondaryAnimation, child) =>

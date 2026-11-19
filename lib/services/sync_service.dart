@@ -14,6 +14,16 @@ import 'id_generator.dart';
 import 'package:sqflite/sqflite.dart'
     show ConflictAlgorithm, Database, DatabaseExecutor;
 
+/// How a sync pass that ran (the device had a connection) went.
+enum SyncOutcome {
+  /// Every request got an answer from the server, success or not.
+  reached,
+
+  /// At least one request got no answer: the server is down, or the
+  /// network only looks connected (captive portal, dead Wi-Fi).
+  unreachable,
+}
+
 class SyncService {
   static final SyncService _instance = SyncService._internal();
   factory SyncService() => _instance;
@@ -118,6 +128,51 @@ class SyncService {
     return true;
   }
 
+  /// Record that [sent] (the row as read before pushing it) reached the
+  /// server as [remoteId]. A row edited while the request was in flight
+  /// keeps its new server id but stays unsynced, so the next pass pushes
+  /// the edit instead of a pull overwriting it. [children] snapshots rows
+  /// sent nested in the payload (splits, exercises); pass the snapshot
+  /// taken before pushing as [sentChildren].
+  ///
+  /// A row deleted while its first push was in flight had no server id to
+  /// queue a delete for, so that delete is queued here (at [path]).
+  @visibleForTesting
+  Future<void> markPushed(
+    Database db,
+    String table,
+    Map<String, Object?> sent, {
+    required Object? remoteId,
+    required String path,
+    Future<String> Function(DatabaseExecutor txn)? children,
+    String? sentChildren,
+  }) async {
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        table,
+        where: 'id = ?',
+        whereArgs: [sent['id']],
+      );
+      if (rows.isEmpty) {
+        if (sent['remote_id'] == null && remoteId != null) {
+          await SyncOutbox.enqueueDelete(txn, '$path$remoteId/');
+        }
+        return;
+      }
+      const bookkeeping = {'remote_id', 'is_synced', 'sync_error'};
+      final now = rows.first;
+      final unchanged =
+          now.keys.every((k) => bookkeeping.contains(k) || now[k] == sent[k]) &&
+          (children == null || await children(txn) == sentChildren);
+      await txn.update(
+        table,
+        {'remote_id': remoteId, if (unchanged) 'is_synced': 1},
+        where: 'id = ?',
+        whereArgs: [sent['id']],
+      );
+    });
+  }
+
   /// Check if device is online
   Future<bool> isOnline() async {
     var connectivityResult = await (Connectivity().checkConnectivity());
@@ -129,7 +184,10 @@ class SyncService {
   /// Fires after every completed sync run, so screens can reload from the
   /// local database once pulled data has landed.
   Stream<void> get onSyncComplete => _syncComplete.stream;
-  final _syncComplete = StreamController<void>.broadcast();
+
+  /// Same events as [onSyncComplete], saying whether the server answered.
+  Stream<SyncOutcome> get onSyncOutcome => _syncComplete.stream;
+  final _syncComplete = StreamController<SyncOutcome>.broadcast();
 
   /// Perform full sync. Overlapping calls share one run (see
   /// [CoalescingRunner]): two concurrent runs would both push the same rows
@@ -144,8 +202,20 @@ class SyncService {
     // Local mode never talks to a server.
     if (!AppModeService.isServer) return Future.value();
     if (forcePull) _forcePull = true;
-    return _runner.run();
+    // Every local write ends up here, even offline: status displays use
+    // this to recount what is waiting to upload.
+    _activity.add(null);
+    final run = _runner.run();
+    run.whenComplete(() => _activity.add(null));
+    return run;
   }
+
+  /// A sync was requested or finished (see [performSync]).
+  Stream<void> get onActivity => _activity.stream;
+  final _activity = StreamController<void>.broadcast();
+
+  /// True while a sync pass is running.
+  bool get isSyncing => _runner.isRunning;
 
   /// Edits push straight away, but pulling every entity after each one
   /// costs ~10 requests; pulls run at most this often unless forced.
@@ -161,10 +231,15 @@ class SyncService {
     _pullThisPass =
         _forcePull || last == null || started.difference(last) >= _pullInterval;
     _forcePull = false;
+    final failuresBefore = ApiService.connectionFailures;
     final ok = await _runSync();
     if (_pullThisPass) _lastPull = started;
     if (ok) await _recordSuccess();
-    _syncComplete.add(null);
+    _syncComplete.add(
+      ApiService.connectionFailures > failuresBefore
+          ? SyncOutcome.unreachable
+          : SyncOutcome.reached,
+    );
   }
 
   /// Settings key for the last sync that ran to the end. Not under the
@@ -564,27 +639,32 @@ class SyncService {
   Future<void> _syncRoutines() async {
     final db = await _dbService.getDatabase();
 
+    Future<List<Map<String, Object?>>> exercisesOf(
+      DatabaseExecutor db,
+      int routineId,
+    ) async => [
+      for (final e in await db.query(
+        'routine_exercises',
+        where: 'routine_id = ?',
+        whereArgs: [routineId],
+        orderBy: 'id ASC',
+      ))
+        {
+          'name': e['name'],
+          'muscle_group': e['muscle_group'],
+          'sets_count': e['sets_count'],
+        },
+    ];
+
     for (final map in await db.query('routines', where: 'is_synced = 0')) {
       final routineId = map['id'] as int;
       try {
-        final exercises = await db.query(
-          'routine_exercises',
-          where: 'routine_id = ?',
-          whereArgs: [routineId],
-          orderBy: 'id ASC',
-        );
+        final exercises = await exercisesOf(db, routineId);
         final payload = {
           'name': map['name'],
           'type': map['type'],
           'client_id': map['uuid'],
-          'routine_exercises': [
-            for (final e in exercises)
-              {
-                'name': e['name'],
-                'muscle_group': e['muscle_group'],
-                'sets_count': e['sets_count'],
-              },
-          ],
+          'routine_exercises': exercises,
         };
         final existingRemoteId = map['remote_id'];
         final response = existingRemoteId == null
@@ -593,14 +673,15 @@ class SyncService {
                 '${ApiService.routinesPath}$existingRemoteId/',
                 data: payload,
               );
-        await db.update(
+        await markPushed(
+          db,
           'routines',
-          {
-            'remote_id': response.data['id'] ?? existingRemoteId,
-            'is_synced': 1,
-          },
-          where: 'id = ?',
-          whereArgs: [routineId],
+          map,
+          remoteId: response.data['id'] ?? existingRemoteId,
+          path: ApiService.routinesPath,
+          children: (txn) async =>
+              jsonEncode(await exercisesOf(txn, routineId)),
+          sentChildren: jsonEncode(exercises),
         );
       } catch (e) {
         debugPrint('Failed to sync routine $routineId: $e');
@@ -706,12 +787,12 @@ class SyncService {
                 ApiService.transactionsPath,
                 data: payload,
               );
-        final remoteId = response.data['id'] ?? existingRemoteId;
-        await db.update(
+        await markPushed(
+          db,
           'expenses',
-          {'remote_id': remoteId, 'is_synced': 1},
-          where: 'id = ?',
-          whereArgs: [map['id']],
+          map,
+          remoteId: response.data['id'] ?? existingRemoteId,
+          path: ApiService.transactionsPath,
         );
       } catch (e) {
         debugPrint('Failed to sync expense ${map['id']}: $e');
@@ -1145,12 +1226,12 @@ class SyncService {
                 data: payload,
               )
             : await _apiService.post('groups/groups/', data: payload);
-        final remoteId = response.data['id'] ?? existingRemoteId;
-        await db.update(
+        await markPushed(
+          db,
           'groups',
-          {'remote_id': remoteId, 'is_synced': 1},
-          where: 'id = ?',
-          whereArgs: [map['id']],
+          map,
+          remoteId: response.data['id'] ?? existingRemoteId,
+          path: 'groups/groups/',
         );
 
         // The owner membership was auto-created server-side; reconcile it.
@@ -1467,6 +1548,7 @@ class SyncService {
       }
 
       if (!allMembersSynced) continue;
+      final sentSplits = await _splitsSnapshot(db, localExpenseId);
 
       try {
         final payload = {
@@ -1490,14 +1572,14 @@ class SyncService {
               )
             : await _apiService.post('groups/group-expenses/', data: payload);
 
-        await db.update(
+        await markPushed(
+          db,
           'group_expenses',
-          {
-            'remote_id': response.data['id'] ?? existingRemoteId,
-            'is_synced': 1,
-          },
-          where: 'id = ?',
-          whereArgs: [localExpenseId],
+          map,
+          remoteId: response.data['id'] ?? existingRemoteId,
+          path: 'groups/group-expenses/',
+          children: (txn) => _splitsSnapshot(txn, localExpenseId),
+          sentChildren: sentSplits,
         );
 
         final remoteSplits = response.data['splits'];
@@ -1533,6 +1615,19 @@ class SyncService {
       debugPrint('Failed to fetch group expenses from remote: $e');
     }
   }
+
+  /// Who owes what on a group expense, to tell whether it was edited.
+  Future<String> _splitsSnapshot(DatabaseExecutor db, int expenseId) async =>
+      jsonEncode([
+        for (final s in await db.query(
+          'group_expense_splits',
+          columns: ['member_id', 'share_amount'],
+          where: 'expense_id = ?',
+          whereArgs: [expenseId],
+          orderBy: 'member_id ASC',
+        ))
+          [s['member_id'], s['share_amount']],
+      ]);
 
   /// Local id of the row in [table] with server id [remoteId], or null.
   Future<int?> _localIdFor(
@@ -1749,14 +1844,12 @@ class SyncService {
                 data: payload,
               )
             : await _apiService.post('groups/settlements/', data: payload);
-        await db.update(
+        await markPushed(
+          db,
           'settlements',
-          {
-            'remote_id': response.data['id'] ?? existingRemoteId,
-            'is_synced': 1,
-          },
-          where: 'id = ?',
-          whereArgs: [map['id']],
+          map,
+          remoteId: response.data['id'] ?? existingRemoteId,
+          path: 'groups/settlements/',
         );
       } catch (e) {
         debugPrint('Failed to sync settlement ${map['id']}: $e');

@@ -20,6 +20,9 @@ class GroupExpenseList extends StatelessWidget {
 
   /// Long-press actions (edit / delete).
   final void Function(GroupExpense expense)? onExpenseLongPress;
+
+  /// Opens the expense for editing.
+  final void Function(GroupExpense expense)? onExpenseTap;
   final void Function(Settlement settlement)? onSettlementLongPress;
 
   const GroupExpenseList({
@@ -30,6 +33,7 @@ class GroupExpenseList extends StatelessWidget {
     this.currentMemberId,
     this.shared = true,
     this.onExpenseLongPress,
+    this.onExpenseTap,
     this.onSettlementLongPress,
   });
 
@@ -87,6 +91,7 @@ class GroupExpenseList extends StatelessWidget {
               trailingLabel: label,
               trailingAmount: amount == null ? null : formatRupees(amount),
               trailingColor: color,
+              onTap: onExpenseTap == null ? null : () => onExpenseTap!(e),
               onLongPress: onExpenseLongPress == null
                   ? null
                   : () => onExpenseLongPress!(e),
@@ -126,6 +131,8 @@ class GroupExpenseList extends StatelessWidget {
         onLongPress: onSettlementLongPress == null
             ? null
             : () => onSettlementLongPress!(s),
+        actionIcon: Icons.delete_outline_rounded,
+        actionTooltip: 'Delete payment',
       ),
     );
   }
