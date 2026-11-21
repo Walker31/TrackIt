@@ -15,7 +15,21 @@ class TransactionList extends StatelessWidget {
   /// Opens [expense] for editing.
   final void Function(Expense expense)? onEdit;
 
-  const TransactionList({super.key, required this.provider, this.onEdit});
+  /// Rows to show; the selected month's when null.
+  final List<Expense>? items;
+
+  /// Shown instead of the default "nothing this month" message.
+  final Widget? empty;
+
+  const TransactionList({
+    super.key,
+    required this.provider,
+    this.onEdit,
+    this.items,
+    this.empty,
+  });
+
+  List<Expense> get _rows => items ?? provider.monthExpenses;
 
   Future<void> _confirmDelete(BuildContext context, int expenseId) async {
     final shouldDelete = await confirmDestructive(
@@ -25,7 +39,7 @@ class TransactionList extends StatelessWidget {
     );
 
     if (shouldDelete && context.mounted) {
-      final match = provider.monthExpenses.where((x) => x.id == expenseId);
+      final match = _rows.where((x) => x.id == expenseId);
       if (match.isNotEmpty) {
         await _deleteWithUndo(context, match.first);
       }
@@ -58,7 +72,8 @@ class TransactionList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final expenses = provider.monthExpenses;
+    final expenses = _rows;
+    if (expenses.isEmpty && empty != null) return empty!;
     if (expenses.isEmpty) {
       final month = DateFormat('MMMM').format(provider.selectedMonth);
       return EmptyState(

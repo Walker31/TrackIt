@@ -10,7 +10,7 @@ import 'sync_outbox.dart';
 /// This service owns database initialization, schema creation, and all
 /// migrations so older installs can safely upgrade without losing data.
 class DatabaseService {
-  static const int _databaseVersion = 6;
+  static const int _databaseVersion = 7;
 
   /// Schema version written into backups, so an older app can refuse a
   /// backup made by a newer one.
@@ -101,6 +101,7 @@ class DatabaseService {
 
   Future<void> _createDatabase(Database db, int version) async {
     await _createSchema(db);
+    await _ensureDeviceFeatureTables(db);
     await _seedDefaultSettings(db);
     await _createIndexes(db);
   }
@@ -131,6 +132,10 @@ class DatabaseService {
         await _migrateToV6(txn);
       }
 
+      if (oldVersion < 7) {
+        await _ensureDeviceFeatureTables(txn);
+      }
+
       await _seedDefaultSettings(txn);
       await _createIndexes(txn);
     });
@@ -139,6 +144,7 @@ class DatabaseService {
   Future<void> _repairSchema(Database db) async {
     await db.transaction((txn) async {
       await _ensureCompatibleSchema(txn);
+      await _ensureDeviceFeatureTables(txn);
       // Older syncs stored the server's bare `txn_date` (YYYY-MM-DD), which
       // falls outside the ISO range queries; pin those rows to midnight.
       await txn.execute(
@@ -194,6 +200,38 @@ class DatabaseService {
 
   Future<void> _migrateToV4(DatabaseExecutor db) async {
     await _ensureCompatibleSchema(db);
+  }
+
+  /// Tables for features kept on this device (and in backups) that the
+  /// server doesn't store yet: recurring transactions and body weight.
+  /// Idempotent.
+  Future<void> _ensureDeviceFeatureTables(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS recurring_rules (
+        id TEXT PRIMARY KEY,
+        amount REAL NOT NULL CHECK (amount > 0),
+        type TEXT NOT NULL DEFAULT 'expense',
+        category TEXT NOT NULL,
+        category_id TEXT,
+        subcategory_id TEXT,
+        payment_method TEXT,
+        description TEXT,
+        frequency TEXT NOT NULL,
+        anchor_day INTEGER NOT NULL,
+        next_date TEXT NOT NULL,
+        end_date TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS body_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL UNIQUE,
+        weight REAL NOT NULL CHECK (weight > 0),
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
   }
 
   Future<void> _migrateToV5(DatabaseExecutor db) async {
@@ -732,6 +770,8 @@ class DatabaseService {
       await txn.delete('exercises');
       await txn.delete('workouts');
       await txn.delete('expenses');
+      await txn.delete('recurring_rules');
+      await txn.delete('body_metrics');
       await txn.delete('budgets');
       await txn.delete('events');
       await txn.delete('group_expense_splits');

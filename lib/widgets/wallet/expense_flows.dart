@@ -12,6 +12,15 @@ Future<void> openAddExpense(BuildContext context, ExpenseProvider provider) {
   return showAppSheet<void>(
     context: context,
     builder: (_) => AddExpenseSheet(
+      onRepeat: (expense, frequency) async {
+        await provider.addRecurring(expense, frequency);
+        if (!context.mounted) return;
+        AppSnackbar.info(
+          context,
+          'Repeats ${frequency.label.toLowerCase()}. '
+          'Manage it under Wallet › Recurring.',
+        );
+      },
       onAdd: (expense) async {
         await provider.addExpense(expense);
         if (!context.mounted) return;

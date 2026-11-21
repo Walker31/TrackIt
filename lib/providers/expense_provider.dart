@@ -6,6 +6,7 @@ import '../services/catalog_service.dart';
 import '../services/expense_service.dart';
 import '../services/budget_alert_service.dart';
 import '../services/sync_service.dart';
+import '../services/recurring_service.dart';
 
 class ExpenseProvider extends ChangeNotifier {
   final ExpenseService _service = ExpenseService();
@@ -30,6 +31,15 @@ class ExpenseProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   DateTime get selectedMonth => _selectedMonth;
   List<Expense> get monthExpenses => _monthExpenses;
+
+  /// Every category in use: the user's own plus the defaults.
+  List<Category> get categories {
+    final byId = {for (final c in defaultCategories) c.id: c, ..._categories};
+    return byId.values.toList();
+  }
+
+  /// Every transaction on the device, newest first.
+  Future<List<Expense>> allExpenses() => _service.getAllExpenses();
 
   static DateTime _firstOfMonth(DateTime d) => DateTime(d.year, d.month);
 
@@ -99,6 +109,7 @@ class ExpenseProvider extends ChangeNotifier {
   /// Re-read today's and this month's figures from the local database.
   Future<void> _reload({bool notify = true}) async {
     try {
+      await _addDueRecurring();
       final now = DateTime.now();
       // Independent reads: issue them together rather than one by one.
       final (expenses, summary, spent, budget, month, categories) = await (
@@ -119,6 +130,26 @@ class ExpenseProvider extends ChangeNotifier {
       debugPrint('Error refreshing expenses: $e');
     }
     if (notify) notifyListeners();
+  }
+
+  // One run at a time, so overlapping reloads can't add an entry twice.
+  static Future<int>? _dueRun;
+
+  Future<void> _addDueRecurring() async {
+    try {
+      _dueRun ??= RecurringService().addDue().whenComplete(
+        () => _dueRun = null,
+      );
+      await _dueRun;
+    } catch (e) {
+      debugPrint('Recurring transactions failed: $e');
+    }
+  }
+
+  /// Saves [expense] and repeats it every [frequency] from then on.
+  Future<void> addRecurring(Expense expense, Frequency frequency) async {
+    await RecurringService().save(RecurringRule.from(expense, frequency));
+    notifyListeners();
   }
 
   Future<void> addExpense(Expense expense) async {

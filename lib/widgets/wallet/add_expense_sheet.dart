@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../services/catalog_service.dart';
+import '../../services/recurring_service.dart' show Frequency;
 import '../animated/animated_segmented_tabs.dart';
 import '../animated/fade_slide_in.dart';
 import '../animated/tap_scale.dart';
@@ -23,7 +24,16 @@ class AddExpenseSheet extends StatefulWidget {
   /// An existing transaction to edit; null to add a new one.
   final Expense? initial;
 
-  const AddExpenseSheet({super.key, required this.onAdd, this.initial});
+  /// Offered as "Repeat" when adding: called after [onAdd] with how often
+  /// the new transaction recurs.
+  final void Function(Expense expense, Frequency frequency)? onRepeat;
+
+  const AddExpenseSheet({
+    super.key,
+    required this.onAdd,
+    this.initial,
+    this.onRepeat,
+  });
 
   @override
   State<AddExpenseSheet> createState() => _AddExpenseSheetState();
@@ -48,6 +58,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   SpendEvent? _event;
   PaymentMethod? _payment;
   DateTime _date = DateTime.now();
+  Frequency? _repeat;
   String? _error;
 
   double get _amount => double.tryParse(_amountController.text) ?? 0;
@@ -217,33 +228,34 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
     // An edit that keeps the day keeps the original time of day.
     final keepTime =
         initial != null && DateUtils.isSameDay(initial.timestamp, _date);
-    widget.onAdd(
-      Expense(
-        id: initial?.id,
-        attachmentUrl: initial?.attachmentUrl,
-        amount: amount,
-        type: _type,
-        category: category.legacy,
-        categoryId: category.id,
-        subcategoryId: _subcategory?.id,
-        eventId: _event?.id,
-        paymentMethod: _payment,
-        description: _descController.text.trim().isEmpty
-            ? null
-            : _descController.text.trim(),
-        // Keep the current time of day so same-day entries stay ordered.
-        timestamp: keepTime
-            ? initial.timestamp
-            : DateTime(
-                _date.year,
-                _date.month,
-                _date.day,
-                now.hour,
-                now.minute,
-                now.second,
-              ),
-      ),
+    final saved = Expense(
+      id: initial?.id,
+      attachmentUrl: initial?.attachmentUrl,
+      amount: amount,
+      type: _type,
+      category: category.legacy,
+      categoryId: category.id,
+      subcategoryId: _subcategory?.id,
+      eventId: _event?.id,
+      paymentMethod: _payment,
+      description: _descController.text.trim().isEmpty
+          ? null
+          : _descController.text.trim(),
+      // Keep the current time of day so same-day entries stay ordered.
+      timestamp: keepTime
+          ? initial.timestamp
+          : DateTime(
+              _date.year,
+              _date.month,
+              _date.day,
+              now.hour,
+              now.minute,
+              now.second,
+            ),
     );
+    widget.onAdd(saved);
+    final repeat = _repeat;
+    if (repeat != null && !_editing) widget.onRepeat?.call(saved, repeat);
     Navigator.pop(context);
   }
 
@@ -472,6 +484,26 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
               ),
           ]),
         ),
+        if (!_editing && widget.onRepeat != null) ...[
+          const SizedBox(height: 20),
+          _section(
+            'Repeat',
+            _chipRow([
+              _SelectChip(
+                label: 'Never',
+                selected: _repeat == null,
+                onTap: () => setState(() => _repeat = null),
+              ),
+              for (final f in Frequency.values)
+                _SelectChip(
+                  label: f.label,
+                  icon: Icons.repeat_rounded,
+                  selected: _repeat == f,
+                  onTap: () => setState(() => _repeat = f),
+                ),
+            ]),
+          ),
+        ],
         const SizedBox(height: 20),
         _section(
           'Trip',

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../widgets/app_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart';
 import '../theme/responsive.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
@@ -20,6 +21,7 @@ import '../widgets/wallet/expense_flows.dart';
 import '../widgets/wallet/events_section.dart';
 import '../widgets/wallet/trips_section.dart';
 import '../widgets/wallet/budgets_card.dart';
+import 'recurring_page.dart' show UpcomingRecurringCard;
 import '../widgets/wallet/create_group_sheet.dart';
 import '../widgets/animated/animated_segmented_tabs.dart';
 import '../widgets/animated/fade_slide_in.dart';
@@ -129,9 +131,19 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                               ),
                               const SizedBox(height: 16),
                               BudgetsCard(provider: provider),
+                              const SizedBox(height: 16),
+                              UpcomingRecurringCard(provider: provider),
                             ],
                             right: [
-                              const SectionHeader(title: "Transactions"),
+                              SectionHeader(
+                                title: "Transactions",
+                                action: IconButton(
+                                  tooltip: 'Search all transactions',
+                                  onPressed: () =>
+                                      context.push('/transactions'),
+                                  icon: const Icon(Icons.search_rounded),
+                                ),
+                              ),
                               const SizedBox(height: 8),
                               TransactionList(
                                 provider: provider,
