@@ -83,7 +83,9 @@ void main() {
   });
 
   test('members rejected for having no account can become guests', () async {
-    await sync.mergeRemoteGroups(db, [group([owner])]);
+    await sync.mergeRemoteGroups(db, [
+      group([owner]),
+    ]);
     final groupId = (await db.query('groups')).single['id'] as int;
     await db.insert('group_members', {
       'group_id': groupId,

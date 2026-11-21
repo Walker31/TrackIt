@@ -24,11 +24,7 @@ void main() {
   }, conflictAlgorithm: ConflictAlgorithm.replace);
 
   Future<String?> readSetting(String key) async {
-    final rows = await db.query(
-      'settings',
-      where: 'key = ?',
-      whereArgs: [key],
-    );
+    final rows = await db.query('settings', where: 'key = ?', whereArgs: [key]);
     return rows.isEmpty ? null : rows.first['value'] as String?;
   }
 
@@ -41,11 +37,7 @@ void main() {
       timestamp: DateTime(2026, 10, 20, 9),
       description: 'Lunch',
     ).toMap();
-    await db.insert('expenses', {
-      ...expense,
-      'remote_id': 41,
-      'is_synced': 1,
-    });
+    await db.insert('expenses', {...expense, 'remote_id': 41, 'is_synced': 1});
     final group = await db.insert('groups', {
       'name': 'Goa trip',
       'remote_id': 7,
@@ -90,8 +82,7 @@ void main() {
   }
 
   Future<int> count(String table) async =>
-      (await db.rawQuery('SELECT COUNT(*) AS c FROM $table')).first['c']
-          as int;
+      (await db.rawQuery('SELECT COUNT(*) AS c FROM $table')).first['c'] as int;
 
   test('restores every row on a fresh install', () async {
     await seed();

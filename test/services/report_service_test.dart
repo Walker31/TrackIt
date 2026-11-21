@@ -8,7 +8,8 @@ void main() {
   late Database db;
   final oct = DateTime(2026, 10, 10);
   final sep = DateTime(2026, 9, 10);
-  Category cat(String name) => defaultCategories.firstWhere((c) => c.name == name);
+  Category cat(String name) =>
+      defaultCategories.firstWhere((c) => c.name == name);
 
   setUp(() async {
     db = await DatabaseService.openInMemoryForTesting();
@@ -49,11 +50,10 @@ void main() {
     expect(r.net, 42800);
     expect(r.previousSpent, 6000);
     expect(r.change, closeTo(0.2, 1e-9));
-    expect([for (final c in r.topCategories) c.name], [
-      'Food & Dining',
-      'Travel',
-      'Shopping',
-    ]);
+    expect(
+      [for (final c in r.topCategories) c.name],
+      ['Food & Dining', 'Travel', 'Shopping'],
+    );
     expect(r.topCategories.first.amount, 4000);
   });
 

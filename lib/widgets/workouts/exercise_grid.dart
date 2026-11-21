@@ -9,6 +9,9 @@ class ExerciseGrid extends StatelessWidget {
   final int selectedIndex;
   final Function(int) onSelect;
 
+  /// Long-press (or right-click) on an exercise, e.g. to remove it.
+  final Function(int)? onOptions;
+
   /// Opens the add-exercise sheet (offered when the list is empty).
   final VoidCallback? onAdd;
 
@@ -17,6 +20,7 @@ class ExerciseGrid extends StatelessWidget {
     required this.workout,
     required this.selectedIndex,
     required this.onSelect,
+    this.onOptions,
     this.onAdd,
   });
 
@@ -50,46 +54,55 @@ class ExerciseGrid extends StatelessWidget {
           final total = exercise.sets.length;
           return MouseRegion(
             cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: () => onSelect(index),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: 132,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: isSelected ? AppColors.fill : AppColors.surface,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: isSelected ? AppColors.fill : hairline,
+            child: Semantics(
+              button: true,
+              selected: isSelected,
+              hint: onOptions == null ? null : 'Long-press for options',
+              child: GestureDetector(
+                onTap: () => onSelect(index),
+                onLongPress: onOptions == null ? null : () => onOptions!(index),
+                onSecondaryTap: onOptions == null
+                    ? null
+                    : () => onOptions!(index),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 132,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: isSelected ? AppColors.fill : AppColors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isSelected ? AppColors.fill : hairline,
+                    ),
                   ),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      exercise.name,
-                      style: AppTextStyles.bodyMd.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: isSelected
-                            ? Colors.white
-                            : AppColors.textPrimary,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        exercise.name,
+                        style: AppTextStyles.bodyMd.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: isSelected
+                              ? Colors.white
+                              : AppColors.textPrimary,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      done == total && total > 0
-                          ? 'All $total sets done'
-                          : '$done of $total sets',
-                      style: AppTextStyles.bodySm.copyWith(
-                        color: isSelected
-                            ? Colors.white.withValues(alpha: 0.8)
-                            : AppColors.textSecondary,
+                      const SizedBox(height: 2),
+                      Text(
+                        done == total && total > 0
+                            ? 'All $total sets done'
+                            : '$done of $total sets',
+                        style: AppTextStyles.bodySm.copyWith(
+                          color: isSelected
+                              ? Colors.white.withValues(alpha: 0.8)
+                              : AppColors.textSecondary,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

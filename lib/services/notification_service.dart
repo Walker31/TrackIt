@@ -141,6 +141,47 @@ class NotificationService {
     }
   }
 
+  /// One notification at [at] (e.g. when a rest timer ends).
+  Future<void> scheduleOnce({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime at,
+  }) async {
+    if (!_ready) return;
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'rest_timer_channel',
+        'Rest timer',
+        importance: Importance.max,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(),
+      macOS: DarwinNotificationDetails(),
+    );
+    try {
+      await _notificationsPlugin.zonedSchedule(
+        id: id,
+        title: title,
+        body: body,
+        scheduledDate: tz.TZDateTime.from(at, tz.local),
+        notificationDetails: details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+    } catch (e) {
+      debugPrint('NotificationService: could not schedule once ($e)');
+    }
+  }
+
+  Future<void> cancel(int id) async {
+    if (!_ready) return;
+    try {
+      await _notificationsPlugin.cancel(id: id);
+    } catch (e) {
+      debugPrint('NotificationService: cancel failed ($e)');
+    }
+  }
+
   tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {
     final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
     tz.TZDateTime scheduledDate = tz.TZDateTime(

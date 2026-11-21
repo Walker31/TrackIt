@@ -35,8 +35,9 @@ void main() {
     return db.insert('expenses', map);
   }
 
-  Future<List<String>> check() async =>
-      [for (final a in await alerts.check(now: now)) a.title];
+  Future<List<String>> check() async => [
+    for (final a in await alerts.check(now: now)) a.title,
+  ];
 
   test('levels', () {
     expect(BudgetAlertService.levelFor(7999, 10000), 0);

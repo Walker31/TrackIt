@@ -185,6 +185,50 @@ class WorkoutService {
     _syncService.performSync();
   }
 
+  /// Remove an exercise and its sets from a workout. The server replaces
+  /// a workout's exercises on every push, so marking it dirty is enough.
+  Future<void> deleteExercise(int exerciseId) async {
+    final db = await _dbService.getDatabase();
+    await db.transaction((txn) async {
+      await _markDirtyForExercise(txn, exerciseId);
+      await txn.delete('exercises', where: 'id = ?', whereArgs: [exerciseId]);
+    });
+    _syncService.performSync();
+  }
+
+  /// Remove one set and renumber the rest of its exercise.
+  Future<void> deleteSet(int setId) async {
+    final db = await _dbService.getDatabase();
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        'sets',
+        columns: ['exercise_id'],
+        where: 'id = ?',
+        whereArgs: [setId],
+      );
+      if (rows.isEmpty) return;
+      final exerciseId = rows.first['exercise_id'] as int;
+      await _markDirtyForExercise(txn, exerciseId);
+      await txn.delete('sets', where: 'id = ?', whereArgs: [setId]);
+      final rest = await txn.query(
+        'sets',
+        columns: ['id'],
+        where: 'exercise_id = ?',
+        whereArgs: [exerciseId],
+        orderBy: 'set_number ASC',
+      );
+      for (var i = 0; i < rest.length; i++) {
+        await txn.update(
+          'sets',
+          {'set_number': i + 1, 'is_synced': 0},
+          where: 'id = ?',
+          whereArgs: [rest[i]['id']],
+        );
+      }
+    });
+    _syncService.performSync();
+  }
+
   // The server stores a workout with its exercises and sets nested, so any
   // child change means the whole workout has to be pushed again.
   Future<void> _markWorkoutDirty(DatabaseExecutor db, int workoutId) =>
@@ -394,5 +438,6 @@ class WorkoutService {
       }
       await txn.delete('workouts', where: 'id = ?', whereArgs: [id]);
     });
+    _syncService.performSync();
   }
 }

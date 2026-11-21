@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:trackit/pages/splash_screen.dart';
 import 'package:trackit/layout.dart';
 import 'package:trackit/pages/settings_page.dart';
+import 'package:trackit/pages/progress_pages.dart';
 import 'package:trackit/pages/auth/login_page.dart';
 import 'package:trackit/pages/auth/welcome_page.dart';
 import 'package:trackit/pages/auth/register_page.dart';
@@ -71,6 +72,32 @@ final routerProvider = Provider<GoRouter>((ref) {
           pageBuilder: (context, state) =>
               appPage(state, Layout(tab: tab), key: _shellKey),
         ),
+      GoRoute(
+        path: '/history',
+        pageBuilder: (context, state) =>
+            appPage(state, const WorkoutHistoryPage()),
+      ),
+      GoRoute(
+        path: '/history/:id',
+        pageBuilder: (context, state) => appPage(
+          state,
+          WorkoutDetailPage(
+            workoutId: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+            justFinished: state.uri.queryParameters['done'] == '1',
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/records',
+        pageBuilder: (context, state) => appPage(state, const RecordsPage()),
+      ),
+      GoRoute(
+        path: '/exercise',
+        pageBuilder: (context, state) => appPage(
+          state,
+          ExerciseProgressPage(name: state.uri.queryParameters['name'] ?? ''),
+        ),
+      ),
       GoRoute(
         path: '/settings',
         pageBuilder: (context, state) => appPage(state, const SettingsPage()),

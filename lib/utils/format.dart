@@ -20,3 +20,10 @@ String formatRupeesCompact(double amount) {
 
 String _trim(double v) =>
     v >= 10 ? v.toStringAsFixed(0) : v.toStringAsFixed(1).replaceAll('.0', '');
+
+/// Seconds as "45s", "1:30" or "2 min".
+String formatDuration(int seconds) {
+  if (seconds < 60) return '${seconds}s';
+  final m = seconds ~/ 60, s = seconds % 60;
+  return s == 0 ? '$m min' : '$m:${s.toString().padLeft(2, '0')}';
+}
