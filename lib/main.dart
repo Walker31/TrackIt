@@ -8,6 +8,7 @@ import 'package:trackit/services/app_mode_service.dart';
 import 'package:trackit/services/database_service.dart';
 import 'package:trackit/providers/app_providers.dart';
 import 'package:trackit/services/notification_service.dart';
+import 'package:trackit/services/reminder_service.dart';
 import 'package:trackit/services/sync_triggers.dart';
 
 import 'theme/app_theme.dart';
@@ -40,14 +41,8 @@ void main() async {
   // backoff while the server is unreachable. Lives as long as the app.
   SyncTriggers.forApp().start();
 
-  // Schedule a daily check-in reminder (e.g., at 8 PM)
-  NotificationService().scheduleDailyReminder(
-    id: 1,
-    title: "Check-in Reminder",
-    body: "Don't forget to log your workouts and expenses today!",
-    hour: 20,
-    minute: 0,
-  );
+  // The daily check-in, at the user's time, skipped once they've logged.
+  ReminderService().reschedule();
 
   runApp(const ProviderScope(child: App()));
 }

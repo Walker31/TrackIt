@@ -27,3 +27,18 @@ String formatDuration(int seconds) {
   final m = seconds ~/ 60, s = seconds % 60;
   return s == 0 ? '$m min' : '$m:${s.toString().padLeft(2, '0')}';
 }
+
+/// What can be spent today and still finish the month on budget: what was
+/// left this morning, spread over the days left (today included), minus
+/// what's already gone today. Negative when today is over.
+double leftToSpendToday({
+  required double budget,
+  required double spentThisMonth,
+  required double spentToday,
+  required DateTime now,
+}) {
+  final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+  final daysLeft = daysInMonth - now.day + 1;
+  final leftThisMorning = budget - (spentThisMonth - spentToday);
+  return leftThisMorning / daysLeft - spentToday;
+}

@@ -7,6 +7,7 @@ import '../services/expense_service.dart';
 import '../services/budget_alert_service.dart';
 import '../services/sync_service.dart';
 import '../services/recurring_service.dart';
+import '../services/reminder_service.dart';
 
 class ExpenseProvider extends ChangeNotifier {
   final ExpenseService _service = ExpenseService();
@@ -157,6 +158,8 @@ class ExpenseProvider extends ChangeNotifier {
     await _service.addExpense(expense);
     await _reload();
     HapticFeedback.lightImpact();
+    // Today is logged: drop tonight's check-in reminder.
+    unawaited(ReminderService().reschedule());
     await _checkBudgets();
   }
 

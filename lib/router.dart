@@ -7,6 +7,7 @@ import 'package:trackit/pages/settings_page.dart';
 import 'package:trackit/pages/progress_pages.dart';
 import 'package:trackit/pages/transactions_page.dart';
 import 'package:trackit/pages/recurring_page.dart';
+import 'package:trackit/pages/body_page.dart';
 import 'package:trackit/models/expenses.dart' show TxnType;
 import 'package:trackit/utils/transaction_filter.dart';
 import 'package:trackit/pages/auth/login_page.dart';
@@ -114,6 +115,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/recurring',
         pageBuilder: (context, state) => appPage(state, const RecurringPage()),
+      ),
+      GoRoute(
+        path: '/body',
+        pageBuilder: (context, state) => appPage(state, const BodyPage()),
       ),
       GoRoute(
         path: '/records',

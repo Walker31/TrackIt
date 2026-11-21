@@ -43,6 +43,12 @@ class DailySummaryCard extends StatelessWidget {
     final monthlyBudget = expenseProvider.monthlyBudget;
     final balance = monthlyBudget - monthlySpend;
     final over = balance < 0;
+    final todayLeft = leftToSpendToday(
+      budget: monthlyBudget,
+      spentThisMonth: monthlySpend,
+      spentToday: todaySpend,
+      now: DateTime.now(),
+    );
     final used = monthlyBudget <= 0
         ? 0.0
         : (monthlySpend / monthlyBudget).clamp(0.0, 1.0);
@@ -63,7 +69,8 @@ class DailySummaryCard extends StatelessWidget {
           ),
           if (monthlyBudget > 0)
             Text(
-              'of ${formatRupees(monthlyBudget)} monthly budget',
+              'of ${formatRupees(monthlyBudget)} · '
+              '${formatRupees(balance.abs())} ${over ? 'over' : 'left'}',
               style: AppTextStyles.bodySm.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -89,7 +96,14 @@ class DailySummaryCard extends StatelessWidget {
           Row(
             children: [
               _stat('Today', formatRupees(todaySpend)),
-              _stat(over ? 'Over budget' : 'Left', formatRupees(balance.abs())),
+              if (monthlyBudget > 0)
+                _stat(
+                  todayLeft < 0 ? 'Over today' : 'Left today',
+                  formatRupees(todayLeft.abs()),
+                  color: todayLeft < 0 ? AppColors.outflow : AppColors.income,
+                )
+              else
+                _stat('Month', formatRupees(monthlySpend)),
               _stat(
                 'Workout',
                 latestWorkout == null
@@ -103,7 +117,7 @@ class DailySummaryCard extends StatelessWidget {
     );
   }
 
-  Widget _stat(String label, String value) {
+  Widget _stat(String label, String value, {Color? color}) {
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -117,7 +131,10 @@ class DailySummaryCard extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             value,
-            style: AppTextStyles.bodyLg.copyWith(fontWeight: FontWeight.w600),
+            style: AppTextStyles.bodyLg.copyWith(
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
           ),
         ],
       ),

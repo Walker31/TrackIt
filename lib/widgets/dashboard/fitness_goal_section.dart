@@ -7,6 +7,7 @@ import '../section_header.dart';
 import '../../models/workouts.dart';
 import '../../providers/workout_provider.dart';
 import '../animated/fade_slide_in.dart';
+import '../../services/progress_service.dart';
 
 class FitnessGoalSection extends StatelessWidget {
   final WorkoutProvider provider;
@@ -37,13 +38,7 @@ class FitnessGoalSection extends StatelessWidget {
         if (firstLoad)
           const SizedBox(height: 80)
         else if (workout == null || workout.exercises.isEmpty)
-          const EmptyState(
-            card: true,
-            compact: true,
-            icon: Icons.fitness_center_rounded,
-            title: 'No workout yet',
-            message: 'Add exercises in the Workout tab to track sets.',
-          )
+          _QuickStart(provider: provider, onOpen: onViewAll)
         else
           Column(
             children: [
@@ -112,6 +107,97 @@ class FitnessGoalSection extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Nothing logged today: one tap to start a routine or repeat last time.
+class _QuickStart extends StatefulWidget {
+  final WorkoutProvider provider;
+  final VoidCallback onOpen;
+  const _QuickStart({required this.provider, required this.onOpen});
+
+  @override
+  State<_QuickStart> createState() => _QuickStartState();
+}
+
+class _QuickStartState extends State<_QuickStart> {
+  late final Future<(List<Workout>, int)> _data = (
+    ProgressService().history(limit: 1),
+    ProgressService().streak(),
+  ).wait;
+  bool _busy = false;
+
+  Future<void> _run(Future<void> Function() action) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await action();
+      widget.onOpen();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final routines = widget.provider.routines;
+    return FutureBuilder<(List<Workout>, int)>(
+      future: _data,
+      builder: (context, snap) {
+        final last = snap.data?.$1.firstOrNull;
+        final streak = snap.data?.$2 ?? 0;
+        if (routines.isEmpty && last == null) {
+          return const EmptyState(
+            card: true,
+            compact: true,
+            icon: Icons.fitness_center_rounded,
+            title: 'No workout yet',
+            message: 'Add exercises in the Workout tab to track sets.',
+          );
+        }
+        return AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                streak > 0
+                    ? '🔥 $streak-day streak. Keep it going?'
+                    : 'Ready when you are.',
+                style: AppTextStyles.bodyMd.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (last != null)
+                    ActionChip(
+                      avatar: const Icon(Icons.replay_rounded, size: 18),
+                      label: Text('Repeat ${last.type.displayName}'),
+                      onPressed: _busy
+                          ? null
+                          : () =>
+                                _run(() => widget.provider.repeatWorkout(last)),
+                    ),
+                  for (final r in routines.take(3))
+                    ActionChip(
+                      avatar: Icon(r.type.icon, size: 18),
+                      label: Text('Start ${r.name}'),
+                      onPressed: _busy
+                          ? null
+                          : () => _run(
+                              () => widget.provider.startWorkoutFromRoutine(r),
+                            ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

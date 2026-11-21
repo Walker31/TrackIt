@@ -14,6 +14,7 @@ import '../providers/auth_provider.dart';
 import '../services/app_mode_service.dart';
 import '../services/backup_service.dart';
 import '../services/export_service.dart';
+import '../services/reminder_service.dart';
 import '../services/sync_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
@@ -39,6 +40,8 @@ class SettingsPage extends ConsumerStatefulWidget {
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _syncing = false;
   bool _busyBackup = false;
+  bool? _reminderOn;
+  (int, int) _reminderTime = (20, 0);
 
   /// Last finished sync and changes still waiting to upload.
   late Future<(DateTime?, int)> _status = _loadStatus();
@@ -47,9 +50,31 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   static Future<(DateTime?, int)> _loadStatus() =>
       (SyncService.lastSyncedAt(), SyncService.pendingChanges()).wait;
 
+  Future<void> _loadReminder() async {
+    final r = ReminderService();
+    final (on, time) = await (r.enabled(), r.time()).wait;
+    if (mounted) {
+      setState(() {
+        _reminderOn = on;
+        _reminderTime = time;
+      });
+    }
+  }
+
+  Future<void> _pickReminderTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: _reminderTime.$1, minute: _reminderTime.$2),
+    );
+    if (picked == null) return;
+    await ReminderService().setTime(picked.hour, picked.minute);
+    await _loadReminder();
+  }
+
   @override
   void initState() {
     super.initState();
+    _loadReminder();
     _syncSub = SyncService().onSyncComplete.listen((_) {
       if (mounted) setState(() => _status = _loadStatus());
     });
@@ -126,6 +151,36 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onTap: _switchToLocal,
           ),
         ],
+      ]),
+      _section('Reminders', [
+        _SettingsTile(
+          icon: Icons.notifications_active_outlined,
+          title: 'Daily check-in',
+          subtitle: 'Skipped on days you have already logged something',
+          showChevron: false,
+          trailing: Switch(
+            value: _reminderOn ?? true,
+            onChanged: _reminderOn == null
+                ? null
+                : (v) async {
+                    setState(() => _reminderOn = v);
+                    await ReminderService().setEnabled(v);
+                  },
+          ),
+        ),
+        if (_reminderOn ?? true)
+          _SettingsTile(
+            icon: Icons.schedule_rounded,
+            title: 'Reminder time',
+            trailing: Text(
+              TimeOfDay(
+                hour: _reminderTime.$1,
+                minute: _reminderTime.$2,
+              ).format(context),
+              style: AppTextStyles.bodyMd.copyWith(fontWeight: FontWeight.w600),
+            ),
+            onTap: _pickReminderTime,
+          ),
       ]),
       _section('Export', [
         _SettingsTile(

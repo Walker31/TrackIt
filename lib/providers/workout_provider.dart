@@ -6,6 +6,7 @@ import '../services/workout_service.dart';
 import '../services/sync_service.dart';
 import '../services/prefs_service.dart';
 import '../services/notification_service.dart';
+import '../services/reminder_service.dart';
 
 class WorkoutProvider extends ChangeNotifier {
   final WorkoutService _service = WorkoutService();
@@ -206,6 +207,7 @@ class WorkoutProvider extends ChangeNotifier {
     await _reload();
     HapticFeedback.mediumImpact(); // Feedback on set completion
     startRestTimer(); // Start timer after completion
+    unawaited(ReminderService().reschedule());
   }
 
   Future<void> uncompleteSet(int setId) async {
