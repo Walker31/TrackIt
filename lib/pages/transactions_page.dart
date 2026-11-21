@@ -21,7 +21,10 @@ import '../widgets/wallet/transaction_list.dart';
 /// Search every transaction by text, type, category, payment method, date
 /// and amount.
 class TransactionsPage extends ConsumerStatefulWidget {
-  const TransactionsPage({super.key});
+  /// Filters to open with (e.g. from a tapped chart bar).
+  final TransactionFilter initial;
+
+  const TransactionsPage({super.key, this.initial = const TransactionFilter()});
 
   @override
   ConsumerState<TransactionsPage> createState() => _TransactionsPageState();
@@ -29,7 +32,7 @@ class TransactionsPage extends ConsumerStatefulWidget {
 
 class _TransactionsPageState extends ConsumerState<TransactionsPage> {
   final _search = TextEditingController();
-  TransactionFilter _filter = const TransactionFilter();
+  late TransactionFilter _filter = widget.initial;
   List<Expense>? _all;
 
   @override
@@ -104,7 +107,7 @@ class _TransactionsPageState extends ConsumerState<TransactionsPage> {
                   Expanded(
                     child: TextField(
                       controller: _search,
-                      autofocus: true,
+                      autofocus: widget.initial.isEmpty,
                       textInputAction: TextInputAction.search,
                       onChanged: (v) =>
                           setState(() => _filter = _filter.copyWith(query: v)),

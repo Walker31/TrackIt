@@ -13,6 +13,7 @@ import '../providers/app_providers.dart';
 import '../providers/auth_provider.dart';
 import '../services/app_mode_service.dart';
 import '../services/backup_service.dart';
+import '../services/export_service.dart';
 import '../services/sync_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
@@ -125,6 +126,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             onTap: _switchToLocal,
           ),
         ],
+      ]),
+      _section('Export', [
+        _SettingsTile(
+          icon: Icons.table_chart_outlined,
+          title: 'Transactions spreadsheet',
+          subtitle: 'Every expense and income as a CSV file',
+          onTap: _busyBackup ? null : () => _exportCsv(transactions: true),
+        ),
+        _SettingsTile(
+          icon: Icons.fitness_center_rounded,
+          title: 'Workouts spreadsheet',
+          subtitle: 'Every set you logged as a CSV file',
+          onTap: _busyBackup ? null : () => _exportCsv(transactions: false),
+        ),
       ]),
       _section('Backup', [
         _SettingsTile(
@@ -399,6 +414,33 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       }
     } catch (e) {
       if (mounted) AppSnackbar.error(context, "Couldn't save the backup: $e");
+    } finally {
+      if (mounted) setState(() => _busyBackup = false);
+    }
+  }
+
+  Future<void> _exportCsv({required bool transactions}) async {
+    setState(() => _busyBackup = true);
+    try {
+      final service = ExportService();
+      final csv = transactions
+          ? await service.transactionsCsv()
+          : await service.workoutsCsv();
+      final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final name =
+          'trackit-${transactions ? 'transactions' : 'workouts'}-$date.csv';
+      // A byte-order mark so Excel reads ₹ and names correctly.
+      final saved = await FilePicker.saveFile(
+        fileName: name,
+        bytes: utf8.encode('﻿$csv'),
+        mimeType: 'text/csv',
+        dialogTitle: 'Save spreadsheet',
+      );
+      if (saved != null && mounted) {
+        AppSnackbar.success(context, 'Saved $name.');
+      }
+    } catch (e) {
+      if (mounted) AppSnackbar.error(context, "Couldn't save the file: $e");
     } finally {
       if (mounted) setState(() => _busyBackup = false);
     }
