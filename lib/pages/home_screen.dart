@@ -11,6 +11,7 @@ import '../widgets/dashboard/fitness_goal_section.dart';
 import '../widgets/dashboard/quick_add_card.dart';
 import '../widgets/wallet/expense_flows.dart';
 import 'body_page.dart' show BodyWeightCard;
+import '../widgets/onboarding.dart' show OnboardingGate;
 
 class HomeScreen extends ConsumerWidget {
   final Function(int)? onTabChange;
@@ -38,6 +39,7 @@ class HomeScreen extends ConsumerWidget {
             bottom: Responsive.pageBottomPadding(context),
           ),
           children: [
+            const OnboardingGate(),
             FadeSlideIn(
               child: PageHeader(
                 title: 'Today',

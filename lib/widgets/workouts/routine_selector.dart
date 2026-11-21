@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import '../app_snackbar.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../section_header.dart';
 import '../glass_container.dart';
-import '../confirm_dialog.dart';
 import '../../models/workouts.dart';
 import '../../providers/workout_provider.dart';
 
@@ -96,14 +96,22 @@ class RoutineSelector extends StatelessWidget {
     );
   }
 
+  /// Deletes straight away with an undo, instead of asking first.
   Future<void> _confirmDelete(BuildContext context, Routine routine) async {
-    final confirmed = await confirmDestructive(
+    if (routine.id == null) return;
+    await provider.deleteRoutine(routine.id!);
+    if (!context.mounted) return;
+    AppSnackbar.info(
       context,
-      title: 'Delete routine?',
-      message: '"${routine.name}" will be removed. Past workouts are kept.',
+      '"${routine.name}" deleted. Past workouts are kept.',
+      actionLabel: 'Undo',
+      onAction: () => provider.addRoutine(
+        Routine(
+          name: routine.name,
+          type: routine.type,
+          exercises: routine.exercises,
+        ),
+      ),
     );
-    if (confirmed && routine.id != null) {
-      await provider.deleteRoutine(routine.id!);
-    }
   }
 }

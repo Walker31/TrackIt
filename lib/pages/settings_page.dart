@@ -15,6 +15,8 @@ import '../services/app_mode_service.dart';
 import '../services/backup_service.dart';
 import '../services/export_service.dart';
 import '../services/reminder_service.dart';
+import '../services/prefs_service.dart';
+import '../utils/payment_request.dart';
 import '../services/sync_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
@@ -41,6 +43,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _syncing = false;
   bool _busyBackup = false;
   bool? _reminderOn;
+  String? _upiId;
   (int, int) _reminderTime = (20, 0);
 
   /// Last finished sync and changes still waiting to upload.
@@ -52,13 +55,54 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Future<void> _loadReminder() async {
     final r = ReminderService();
-    final (on, time) = await (r.enabled(), r.time()).wait;
+    final (on, time, upi) = await (
+      r.enabled(),
+      r.time(),
+      PrefsService().get('upi_id'),
+    ).wait;
     if (mounted) {
       setState(() {
+        _upiId = upi;
         _reminderOn = on;
         _reminderTime = time;
       });
     }
+  }
+
+  Future<void> _editUpiId() async {
+    final controller = TextEditingController(text: _upiId ?? '');
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Your UPI ID'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.emailAddress,
+          decoration: const InputDecoration(
+            hintText: 'name@bank (leave empty to remove)',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null || !mounted) return;
+    if (value.isNotEmpty && !looksLikeUpiId(value)) {
+      AppSnackbar.error(context, "That doesn't look like a UPI ID.");
+      return;
+    }
+    await PrefsService().set('upi_id', value);
+    await _loadReminder();
   }
 
   Future<void> _pickReminderTime() async {
@@ -111,6 +155,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
           onTap: () => _editBudget(budget),
+        ),
+        _SettingsTile(
+          icon: Icons.qr_code_2_rounded,
+          title: 'Your UPI ID',
+          subtitle: 'Added to payment requests in shared events',
+          trailing: Text(
+            _upiId == null || _upiId!.isEmpty ? 'Not set' : _upiId!,
+            style: AppTextStyles.bodyMd.copyWith(
+              color: _upiId == null || _upiId!.isEmpty
+                  ? AppColors.textTertiary
+                  : AppColors.textPrimary,
+            ),
+          ),
+          onTap: _editUpiId,
         ),
       ]),
       _section('Data & sync', [

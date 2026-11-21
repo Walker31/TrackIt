@@ -20,10 +20,14 @@ class BalancesList extends StatelessWidget {
   final Set<int> guestIds;
   final void Function(int memberId)? onLinkGuest;
 
+  /// Offered on payments owed to the viewer: ask that person to pay.
+  final void Function(SuggestedPayment payment, String name)? onRequest;
+
   const BalancesList({
     super.key,
     required this.balances,
     required this.currentMemberId,
+    this.onRequest,
     this.guestIds = const {},
     this.onLinkGuest,
   });
@@ -135,6 +139,15 @@ class BalancesList extends StatelessWidget {
               color: color,
             ),
           ),
+          if (p.to == currentMemberId && onRequest != null)
+            IconButton(
+              tooltip: 'Ask ${_name(p.from)} to pay',
+              onPressed: () => onRequest!(p, _name(p.from)),
+              icon: Icon(
+                Icons.request_quote_outlined,
+                color: AppColors.primary,
+              ),
+            ),
         ],
       ),
     );

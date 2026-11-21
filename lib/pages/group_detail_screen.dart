@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../services/prefs_service.dart';
+import '../utils/format.dart';
+import '../utils/payment_request.dart';
+import '../utils/simplify_debts.dart' show SuggestedPayment;
 import '../widgets/app_sheet.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/responsive.dart';
@@ -187,6 +192,8 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
                                 for (final m in group.members)
                                   if (m.isGuest) m.id!,
                               },
+                              onRequest: (p, name) =>
+                                  _requestPayment(group, p, name),
                               onLinkGuest: (id) => _linkGuest(
                                 group.members.firstWhere((m) => m.id == id),
                               ),
@@ -415,6 +422,84 @@ class _GroupDetailScreenState extends ConsumerState<GroupDetailScreen> {
 
   /// A guest joined TrackIt: attach their account so the event and their
   /// share show up for them.
+  /// Copies a "you owe me" message, with a UPI link when the user has
+  /// saved their UPI ID, to paste into WhatsApp, SMS or email.
+  Future<void> _requestPayment(
+    Group group,
+    SuggestedPayment payment,
+    String name,
+  ) async {
+    final prefs = PrefsService();
+    var vpa = await prefs.get('upi_id');
+    if (!mounted) return;
+    if (vpa == null) {
+      final controller = TextEditingController();
+      final entered = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Add your UPI ID?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'With it, the message includes a link that opens any UPI '
+                'app with the amount filled in. It stays on this device.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(hintText: 'name@bank'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, ''),
+              child: const Text('Skip'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (entered == null || !mounted) return;
+      if (entered.isNotEmpty) {
+        if (!looksLikeUpiId(entered)) {
+          AppSnackbar.error(context, "That doesn't look like a UPI ID.");
+          return;
+        }
+        vpa = entered.trim();
+        await prefs.set('upi_id', vpa);
+      }
+    }
+    final me = ref.read(groupProviderProvider).currentUsername ?? 'TrackIt';
+    final text = paymentRequestText(
+      debtor: name,
+      group: group.name,
+      amount: formatRupees(payment.amount),
+      link: vpa == null || vpa.isEmpty
+          ? null
+          : upiLink(
+              vpa: vpa,
+              payeeName: me,
+              amount: payment.amount,
+              note: group.name,
+            ),
+    );
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    AppSnackbar.success(
+      context,
+      'Message copied. Paste it in WhatsApp or SMS to $name.',
+    );
+  }
+
   Future<void> _linkGuest(GroupMember guest) async {
     final controller = TextEditingController();
     String? error;

@@ -270,33 +270,44 @@ class SyncService {
   /// entity the sync pushes, plus queued deletes. Exercises and sets ride
   /// along with their workout; members the server rejected never upload.
   static Future<int> pendingChanges() async {
+    final byKind = await pendingByKind();
+    return byKind.values.fold<int>(0, (a, b) => a + b);
+  }
+
+  /// Changes waiting to upload, by what they are ("Transactions": 3), for
+  /// showing the user exactly what hasn't reached the server yet.
+  static Future<Map<String, int>> pendingByKind() async {
     final db = await DatabaseService().getDatabase();
-    const tables = [
-      'expenses',
-      'workouts',
-      'routines',
-      'budgets',
-      'events',
-      'groups',
-      'group_expenses',
-      'settlements',
-    ];
+    const tables = {
+      'expenses': 'Transactions',
+      'workouts': 'Workouts',
+      'routines': 'Routines',
+      'budgets': 'Budgets',
+      'events': 'Trips',
+      'groups': 'Events',
+      'group_expenses': 'Shared expenses',
+      'settlements': 'Settle-ups',
+    };
     Future<int> count(String sql) async {
       final rows = await db.rawQuery(sql);
       return (rows.first['c'] as int?) ?? 0;
     }
 
-    var total = 0;
-    for (final table in tables) {
-      total += await count(
+    final out = <String, int>{};
+    for (final MapEntry(key: table, value: label) in tables.entries) {
+      final n = await count(
         'SELECT COUNT(*) AS c FROM $table WHERE is_synced = 0',
       );
+      if (n > 0) out[label] = n;
     }
-    total += await count(
+    final members = await count(
       'SELECT COUNT(*) AS c FROM group_members '
       'WHERE is_synced = 0 AND sync_error IS NULL',
     );
-    return total + await SyncOutbox.pendingCount();
+    if (members > 0) out['Members'] = members;
+    final deletes = await SyncOutbox.pendingCount();
+    if (deletes > 0) out['Deletions'] = deletes;
+    return out;
   }
 
   /// True if the pass ran to the end (individual rows may still have

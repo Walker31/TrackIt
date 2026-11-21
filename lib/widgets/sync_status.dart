@@ -93,6 +93,10 @@ class _SyncStatusIndicatorState extends State<SyncStatusIndicator> {
 
   Future<void> _syncNow() async {
     if (!AppModeService.isServer) return;
+    if (_pending > 0) {
+      await _showPending();
+      return;
+    }
     if (_offline) {
       AppSnackbar.info(
         context,
@@ -138,6 +142,7 @@ class _SyncStatusIndicatorState extends State<SyncStatusIndicator> {
       SyncState.localOnly =>
         'Your data stays on this device. Sign in from Settings to sync.',
       SyncState.offline => 'Changes upload when you reconnect.',
+      SyncState.waiting => '$label. Click to see what.',
       _ => '$label. Click to sync now.',
     };
 
@@ -178,6 +183,75 @@ class _SyncStatusIndicatorState extends State<SyncStatusIndicator> {
         ),
       ),
     );
+  }
+
+  /// Lists what hasn't uploaded yet, with a button to try now.
+  Future<void> _showPending() async {
+    final byKind = await SyncService.pendingByKind();
+    if (!mounted) return;
+    final retry = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Waiting to upload', style: AppTextStyles.h3),
+              const SizedBox(height: 4),
+              Text(
+                _offline
+                    ? 'You are offline. These upload when you reconnect.'
+                    : 'Saved on this device. They upload on the next sync.',
+                style: AppTextStyles.bodySm.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              for (final e in byKind.entries)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(e.key, style: AppTextStyles.bodyMd)),
+                      Text(
+                        '${e.value}',
+                        style: AppTextStyles.bodyMd.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (_lastSynced != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Last synced ${_ago(_lastSynced!)}',
+                  style: AppTextStyles.bodySm.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              if (!_offline)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => Navigator.pop(context, true),
+                    icon: const Icon(Icons.sync_rounded),
+                    label: const Text('Sync now'),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (retry == true) {
+      await _sync.performSync(forcePull: true);
+      await _refresh();
+    }
   }
 
   static String _count(int n) => '$n change${n == 1 ? '' : 's'}';

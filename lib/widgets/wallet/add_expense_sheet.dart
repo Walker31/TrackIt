@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../services/catalog_service.dart';
+import '../../services/cloudinary_service.dart';
 import '../../services/recurring_service.dart' show Frequency;
 import '../animated/animated_segmented_tabs.dart';
 import '../animated/fade_slide_in.dart';
@@ -60,6 +61,9 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   DateTime _date = DateTime.now();
   Frequency? _repeat;
   String? _error;
+  final _cloudinary = CloudinaryService();
+  String? _attachmentUrl;
+  bool _uploading = false;
 
   double get _amount => double.tryParse(_amountController.text) ?? 0;
 
@@ -92,6 +96,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
               ?.id;
       _pendingSubcategoryId = initial.subcategoryId;
       _pendingEventId = initial.eventId;
+      _attachmentUrl = initial.attachmentUrl;
     }
     _amountController.addListener(() => setState(() => _error = null));
     _load();
@@ -440,6 +445,108 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
     );
   }
 
+  Future<void> _pickReceipt({required bool camera}) async {
+    final file = await _cloudinary.pickReceiptImage(fromCamera: camera);
+    if (file == null || !mounted) return;
+    setState(() => _uploading = true);
+    try {
+      final url = await _cloudinary.uploadReceipt(file);
+      if (mounted) setState(() => _attachmentUrl = url);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = "Couldn't upload the photo. Try again.");
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  void _viewReceipt() {
+    final url = _attachmentUrl;
+    if (url == null) return;
+    showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: InteractiveViewer(
+                child: Image.network(
+                  url,
+                  fit: BoxFit.contain,
+                  semanticLabel: 'Receipt photo',
+                  errorBuilder: (_, _, _) => const Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Text("Couldn't load the photo."),
+                  ),
+                ),
+              ),
+            ),
+            OverflowBar(
+              children: [
+                TextButton(
+                  onPressed: () {
+                    setState(() => _attachmentUrl = null);
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Remove'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Receipt photo row; only when photo upload is set up, or one exists.
+  List<Widget> _receipt() {
+    if (!_cloudinary.isConfigured && _attachmentUrl == null) return const [];
+    final attached = _attachmentUrl != null;
+    return [
+      const SizedBox(height: 20),
+      _section(
+        'Receipt',
+        _chipRow([
+          if (_uploading)
+            _SelectChip(
+              label: 'Uploading…',
+              icon: Icons.cloud_upload_outlined,
+              selected: false,
+              onTap: () {},
+            )
+          else if (attached)
+            _SelectChip(
+              label: 'View photo',
+              icon: Icons.receipt_long_rounded,
+              selected: true,
+              onTap: _viewReceipt,
+            )
+          else ...[
+            _SelectChip(
+              label: 'Take photo',
+              icon: Icons.photo_camera_outlined,
+              selected: false,
+              onTap: () => _pickReceipt(camera: true),
+            ),
+            _SelectChip(
+              label: 'From gallery',
+              icon: Icons.photo_library_outlined,
+              selected: false,
+              onTap: () => _pickReceipt(camera: false),
+            ),
+          ],
+        ]),
+      ),
+    ];
+  }
+
   Widget _details() {
     final today = DateUtils.dateOnly(DateTime.now());
     final yesterday = today.subtract(const Duration(days: 1));
@@ -484,6 +591,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
               ),
           ]),
         ),
+        ..._receipt(),
         if (!_editing && widget.onRepeat != null) ...[
           const SizedBox(height: 20),
           _section(
