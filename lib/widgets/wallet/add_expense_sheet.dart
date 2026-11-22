@@ -9,6 +9,7 @@ import '../../services/catalog_service.dart';
 import '../../services/cloudinary_service.dart';
 import '../../services/prefs_service.dart';
 import '../../models/finance/currency.dart';
+import '../../utils/sms_parser.dart';
 import '../../services/recurring_service.dart' show Frequency;
 import '../animated/animated_segmented_tabs.dart';
 import '../animated/fade_slide_in.dart';
@@ -27,6 +28,9 @@ class AddExpenseSheet extends StatefulWidget {
   /// An existing transaction to edit; null to add a new one.
   final Expense? initial;
 
+  /// A bank or UPI message to fill the form from (shared to the app).
+  final ParsedSms? prefill;
+
   /// Offered as "Repeat" when adding: called after [onAdd] with how often
   /// the new transaction recurs.
   final void Function(Expense expense, Frequency frequency)? onRepeat;
@@ -36,6 +40,7 @@ class AddExpenseSheet extends StatefulWidget {
     required this.onAdd,
     this.initial,
     this.onRepeat,
+    this.prefill,
   });
 
   @override
@@ -121,6 +126,12 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       }
     }
     _rateController.addListener(() => setState(() => _error = null));
+    final prefill = widget.prefill;
+    if (prefill != null && initial == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _applySms(prefill);
+      });
+    }
     _amountController.addListener(() => setState(() => _error = null));
     _load();
   }
@@ -171,6 +182,49 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       _subcategory = null;
       _error = null;
     });
+  }
+
+  /// Fills the form from a bank or UPI message.
+  void _applySms(ParsedSms sms) {
+    final amount = sms.amount;
+    final category = sms.categoryName == null
+        ? null
+        : defaultCategories
+              .where((c) => c.name == sms.categoryName && c.type == sms.type)
+              .firstOrNull;
+    setState(() {
+      _currency = homeCurrency;
+      _amountController.text = amount == amount.roundToDouble()
+          ? amount.toStringAsFixed(0)
+          : amount.toStringAsFixed(2);
+      if (sms.merchant != null && _descController.text.trim().isEmpty) {
+        _descController.text = sms.merchant!;
+      }
+      if (sms.paymentMethod != null) _payment = sms.paymentMethod;
+      if (sms.date != null) _date = sms.date!;
+      if (category != null) _pendingCategoryId = category.id;
+    });
+    if (sms.type != _type) {
+      _setType(sms.type);
+    } else if (category != null) {
+      _load();
+    }
+  }
+
+  Future<void> _pasteSms() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text?.trim() ?? '';
+    final sms = text.isEmpty ? null : parseBankSms(text);
+    if (!mounted) return;
+    if (sms == null) {
+      setState(
+        () => _error = text.isEmpty
+            ? 'Copy a bank or UPI message first, then tap Paste SMS.'
+            : "Couldn't find an amount in the copied text.",
+      );
+      return;
+    }
+    _applySms(sms);
   }
 
   void _setType(TxnType type) {
@@ -390,6 +444,15 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                       ),
                       const SizedBox(height: 16),
                       _currencyRow(),
+                      if (!_editing)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: _pasteSms,
+                            icon: const Icon(Icons.sms_outlined, size: 18),
+                            label: const Text('Paste bank SMS'),
+                          ),
+                        ),
                       const SizedBox(height: 28),
                       FadeSlideIn(
                         key: _categoryKey,

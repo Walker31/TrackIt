@@ -1,3 +1,4 @@
+import 'group_icon.dart';
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
@@ -92,7 +93,7 @@ class _CreateGroupSheetState extends State<CreateGroupSheet> {
                             width: 1.5,
                           ),
                         ),
-                        child: Text(icon, style: const TextStyle(fontSize: 24)),
+                        child: GroupIcon(icon, size: 24),
                       ),
                     ),
                   ),

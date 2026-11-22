@@ -4,14 +4,20 @@ import '../../utils/format.dart';
 import '../app_sheet.dart';
 import '../app_snackbar.dart';
 import 'add_expense_sheet.dart';
+import '../../utils/sms_parser.dart';
 
 /// Opens the add-expense sheet and confirms the saved expense, warning when
 /// it takes the month over budget. Shared by the Wallet button, the Home
 /// header and the `N` shortcut, so they all behave the same.
-Future<void> openAddExpense(BuildContext context, ExpenseProvider provider) {
+Future<void> openAddExpense(
+  BuildContext context,
+  ExpenseProvider provider, {
+  ParsedSms? prefill,
+}) {
   return showAppSheet<void>(
     context: context,
     builder: (_) => AddExpenseSheet(
+      prefill: prefill,
       onRepeat: (expense, frequency) async {
         await provider.addRecurring(expense, frequency);
         if (!context.mounted) return;

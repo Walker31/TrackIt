@@ -1,3 +1,4 @@
+import '../widgets/wallet/group_icon.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/prefs_service.dart';
@@ -705,7 +706,7 @@ class _GroupHeader extends StatelessWidget {
                 color: AppColors.primary.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: Text(group.icon, style: const TextStyle(fontSize: 32)),
+              child: GroupIcon(group.icon, size: 32),
             ),
             const SizedBox(width: 16),
             Expanded(

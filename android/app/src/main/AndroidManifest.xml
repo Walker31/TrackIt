@@ -32,7 +32,26 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- "Share" a bank or UPI SMS to TrackIt to fill in an expense.
+                 Nothing reads the user's messages on its own. -->
+            <intent-filter android:label="Add to TrackIt">
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
+            </intent-filter>
         </activity>
+        <!-- Home-screen widget: add an expense or open the workout. -->
+        <receiver
+            android:name=".QuickAddWidget"
+            android:exported="false"
+            android:label="TrackIt quick add">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_add_widget_info"/>
+        </receiver>
         <!-- flutter_local_notifications: without these, scheduled
              notifications (the daily reminder) never fire. -->
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />

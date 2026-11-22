@@ -14,6 +14,10 @@ import 'package:trackit/theme/app_text_styles.dart';
 import 'package:trackit/theme/responsive.dart';
 import 'package:trackit/widgets/brand_mark.dart';
 import 'package:trackit/widgets/sync_status.dart';
+import 'dart:async';
+import 'package:trackit/services/launch_requests.dart';
+import 'package:trackit/utils/sms_parser.dart';
+import 'package:trackit/widgets/app_snackbar.dart';
 
 /// The main tabs, each with its own address so the browser's back button,
 /// refresh and bookmarks land on the right one.
@@ -80,9 +84,47 @@ class _LayoutState extends State<Layout> with SingleTickerProviderStateMixin {
     (Icons.bar_chart_outlined, Icons.bar_chart_rounded, 'Stats'),
   ];
 
+  StreamSubscription<LaunchRequest>? _launchSub;
+
+  /// Widget buttons and shared SMS (Android), at start-up and while open.
+  Future<void> _listenForLaunchRequests() async {
+    _launchSub = LaunchRequests.stream.listen(_handle);
+    final first = await LaunchRequests.takeInitial();
+    if (first != null && mounted) _handle(first);
+  }
+
+  void _handle(LaunchRequest request) {
+    final expenses = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(expenseProviderProvider);
+    switch (request) {
+      case AddExpenseRequest():
+        context.go(AppTab.home.path);
+        openAddExpense(context, expenses);
+      case OpenWorkoutRequest():
+        context.go(AppTab.workout.path);
+      case SharedTextRequest(:final text):
+        final sms = parseBankSms(text);
+        context.go(AppTab.home.path);
+        if (sms == null) {
+          AppSnackbar.info(
+            context,
+            "That text doesn't look like a payment message. Add it by hand.",
+          );
+          openAddExpense(context, expenses);
+        } else {
+          openAddExpense(context, expenses, prefill: sms);
+        }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _listenForLaunchRequests(),
+    );
     _pages = [
       HomeScreen(onTabChange: _select),
       const WalletScreen(),
@@ -93,6 +135,7 @@ class _LayoutState extends State<Layout> with SingleTickerProviderStateMixin {
 
   @override
   void dispose() {
+    _launchSub?.cancel();
     _enter.dispose();
     super.dispose();
   }
