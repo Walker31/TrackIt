@@ -73,4 +73,110 @@ void main() {
     expect(saved.originalAmount, 12.5);
     expect(saved.amount, closeTo(1040.88, 0.01));
   });
+
+  /// Opens the sheet for a new entry; returns a getter for what was saved
+  /// and how often it repeats.
+  Future<(Expense?, String?) Function()> openNew(WidgetTester tester) async {
+    // A tall window, so the save button is on screen.
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    Expense? saved;
+    String? repeat;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                builder: (_) => AddExpenseSheet(
+                  onAdd: (e) => saved = e,
+                  onRepeat: (_, f) => repeat = f.name,
+                ),
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await settleIo(tester);
+    return () => (saved, repeat);
+  }
+
+  testWidgets('a pasted bank SMS fills the form', (tester) async {
+    final result = await openNew(tester);
+    await tester.tap(find.text('Paste bank SMS'));
+    await settleIo(tester);
+    expect(find.text('Paste a bank SMS'), findsOneWidget);
+    await tester.enterText(
+      find.byType(TextField).last,
+      'Rs.450.00 debited from A/c XX1234 on 21-11-26 to VPA swiggy@icici '
+      '(UPI Ref No 432112345678).',
+    );
+    await tester.pump();
+    expect(find.textContaining('Spent ₹450 · Swiggy'), findsOneWidget);
+    await tester.tap(find.text('Fill in'));
+    await settleIo(tester);
+
+    await tester.tap(find.textContaining('Save ₹450'));
+    await tester.pump();
+    final (saved, _) = result();
+    expect(saved!.amount, 450);
+    expect(saved.description, 'Swiggy');
+    expect(saved.paymentMethod, PaymentMethod.upi);
+    expect(saved.timestamp.day, 21);
+    expect(
+      saved.categoryId,
+      defaultCategories.firstWhere((c) => c.name == 'Food & Dining').id,
+    );
+  });
+
+  testWidgets('a new dollar expense saves rupees, dollars and the repeat', (
+    tester,
+  ) async {
+    final result = await openNew(tester);
+    await tester.tap(find.text('USD'));
+    await settleIo(tester);
+    final fields = find.byType(TextField);
+    // Description, amount, rate.
+    await tester.enterText(fields.at(1), '12.5');
+    await tester.enterText(fields.at(2), '83.27');
+    await tester.pump();
+    expect(find.text('= ₹1,040.88'), findsOneWidget);
+    await tester.tap(find.text('Monthly'));
+    await tester.pump();
+    await tester.tap(find.textContaining('Save ₹1,040.88'));
+    await tester.pump();
+    final (saved, repeat) = result();
+    expect(saved!.amount, 1040.88);
+    expect(saved.currency, 'USD');
+    expect(saved.originalAmount, 12.5);
+    expect(repeat, 'monthly');
+  });
+
+  testWidgets('a foreign currency needs a rate', (tester) async {
+    final result = await openNew(tester);
+    await tester.tap(find.text('EUR'));
+    await settleIo(tester);
+    await tester.enterText(find.byType(TextField).at(1), '20');
+    await tester.pump();
+    await tester.tap(find.textContaining('Save'));
+    await tester.pump();
+    expect(find.textContaining('Enter the rate'), findsOneWidget);
+    expect(result().$1, isNull);
+  });
+}
+
+/// Lets the sheet's database reads (real I/O) finish.
+Future<void> settleIo(WidgetTester tester) async {
+  for (var i = 0; i < 5; i++) {
+    await tester.runAsync(
+      () => Future.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }

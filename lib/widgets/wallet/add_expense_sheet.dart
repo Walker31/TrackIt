@@ -211,16 +211,27 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
     }
   }
 
+  /// Asks for a bank or UPI message, pasted by the user. Reading the
+  /// clipboard directly needs a browser permission (and shows a notice on
+  /// newer Android), so it only pre-fills the box when that's allowed.
   Future<void> _pasteSms() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final text = data?.text?.trim() ?? '';
-    final sms = text.isEmpty ? null : parseBankSms(text);
+    var initial = '';
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = data?.text?.trim() ?? '';
+      if (parseBankSms(text) != null) initial = text;
+    } catch (_) {}
     if (!mounted) return;
+    final text = await showDialog<String>(
+      context: context,
+      builder: (context) => _SmsDialog(initial: initial),
+    );
+    if (text == null || !mounted) return;
+    final sms = parseBankSms(text);
     if (sms == null) {
       setState(
-        () => _error = text.isEmpty
-            ? 'Copy a bank or UPI message first, then tap Paste SMS.'
-            : "Couldn't find an amount in the copied text.",
+        () => _error =
+            "Couldn't find an amount in that message. Enter it by hand.",
       );
       return;
     }
@@ -349,9 +360,10 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
               now.second,
             ),
     );
-    widget.onAdd(saved);
+    // Repeat first, so the add confirmation can mention it.
     final repeat = _repeat;
     if (repeat != null && !_editing) widget.onRepeat?.call(saved, repeat);
+    widget.onAdd(saved);
     Navigator.pop(context);
   }
 
@@ -1094,6 +1106,83 @@ class _CategoryTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A box to paste a bank or UPI message into, showing what was understood.
+class _SmsDialog extends StatefulWidget {
+  final String initial;
+  const _SmsDialog({required this.initial});
+
+  @override
+  State<_SmsDialog> createState() => _SmsDialogState();
+}
+
+class _SmsDialogState extends State<_SmsDialog> {
+  late final _text = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sms = parseBankSms(_text.text);
+    return AlertDialog(
+      title: const Text('Paste a bank SMS'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _text,
+              autofocus: true,
+              minLines: 3,
+              maxLines: 6,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                hintText:
+                    'e.g. Rs.450 debited from A/c XX1234 to VPA '
+                    'swiggy@icici…',
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              sms == null
+                  ? (_text.text.trim().isEmpty
+                        ? 'The amount, merchant and date are filled in for you.'
+                        : 'No amount found yet.')
+                  : '${sms.type == TxnType.income ? 'Received' : 'Spent'} '
+                        '${formatRupees(sms.amount)}'
+                        '${sms.merchant == null ? '' : ' · ${sms.merchant}'}'
+                        '${sms.categoryName == null ? '' : ' · ${sms.categoryName}'}',
+              style: AppTextStyles.bodySm.copyWith(
+                color: sms == null
+                    ? AppColors.textSecondary
+                    : AppColors.textPrimary,
+                fontWeight: sms == null ? null : FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: sms == null
+              ? null
+              : () => Navigator.pop(context, _text.text),
+          child: const Text('Fill in'),
+        ),
+      ],
     );
   }
 }

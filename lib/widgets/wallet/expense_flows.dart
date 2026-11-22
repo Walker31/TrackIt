@@ -14,25 +14,24 @@ Future<void> openAddExpense(
   ExpenseProvider provider, {
   ParsedSms? prefill,
 }) {
+  // Set by the sheet just before onAdd when the entry repeats, so one
+  // message confirms both.
+  String? repeats;
   return showAppSheet<void>(
     context: context,
     builder: (_) => AddExpenseSheet(
       prefill: prefill,
-      onRepeat: (expense, frequency) async {
-        await provider.addRecurring(expense, frequency);
-        if (!context.mounted) return;
-        AppSnackbar.info(
-          context,
-          'Repeats ${frequency.label.toLowerCase()}. '
-          'Manage it under Wallet › Recurring.',
-        );
+      onRepeat: (expense, frequency) {
+        repeats = frequency.label.toLowerCase();
+        provider.addRecurring(expense, frequency);
       },
       onAdd: (expense) async {
         await provider.addExpense(expense);
         if (!context.mounted) return;
         final label =
             '${formatRupees(expense.amount)} added to '
-            '${provider.categoryOf(expense).name}.';
+            '${provider.categoryOf(expense).name}.'
+            '${repeats == null ? '' : ' Repeats $repeats (see Wallet › Recurring).'}';
         if (provider.monthlySpent > provider.monthlyBudget) {
           AppSnackbar.warning(
             context,
