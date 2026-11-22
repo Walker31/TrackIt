@@ -11,6 +11,7 @@ import 'sync_outbox.dart';
 import '../models/expenses.dart';
 import '../models/workouts.dart';
 import 'id_generator.dart';
+import 'recurring_service.dart';
 import 'package:sqflite/sqflite.dart'
     show ConflictAlgorithm, Database, DatabaseExecutor;
 
@@ -283,6 +284,8 @@ class SyncService {
       'workouts': 'Workouts',
       'routines': 'Routines',
       'budgets': 'Budgets',
+      'recurring_rules': 'Recurring',
+      'body_metrics': 'Body weight',
       'events': 'Trips',
       'groups': 'Events',
       'group_expenses': 'Shared expenses',
@@ -324,10 +327,13 @@ class SyncService {
         () async {
           await _syncCatalog();
           await _syncBudgets();
+          // Before transactions, so the ones a rule adds upload this pass.
+          await _syncRecurringRules();
           await _syncExpenses();
         }(),
         _syncWorkouts(),
         _syncRoutines(),
+        _syncBodyMetrics(),
         () async {
           await _syncGroups();
           await _syncGroupMembers();
@@ -776,6 +782,283 @@ class SyncService {
     }
   }
 
+  /// Sync recurring transaction rules, then add the transactions that fell
+  /// due. Adding happens only here, after a successful pull, so this device
+  /// sees the `next_date` another device already advanced; the entries'
+  /// derived client ids cover two devices adding at the same moment.
+  Future<void> _syncRecurringRules() async {
+    final db = await _dbService.getDatabase();
+    await _pushRecurringRules(db);
+
+    try {
+      final started = DateTime.now();
+      final remote = await _fetchAll(
+        ApiService.recurringRulesPath,
+        'recurring_rules',
+      );
+      await db.transaction((txn) async {
+        await mergeRemoteRecurringRules(txn, remote);
+        await _saveCursor(txn, 'recurring_rules', started);
+      });
+    } on _PullSkipped {
+      return;
+    } catch (e) {
+      debugPrint('Failed to fetch recurring rules from remote: $e');
+      return;
+    }
+
+    try {
+      // Push the moved-on rules straight away, so other devices see them.
+      if (await RecurringService().addDue() > 0) await _pushRecurringRules(db);
+    } catch (e) {
+      debugPrint('Adding due recurring transactions failed: $e');
+    }
+  }
+
+  Future<void> _pushRecurringRules(Database db) async {
+    for (final row in await db.query(
+      'recurring_rules',
+      where: 'is_synced = 0',
+    )) {
+      final id = row['id'] as String;
+      try {
+        final payload = {
+          'client_id': id,
+          'amount': (row['amount'] as num).toStringAsFixed(2),
+          'type': row['type'],
+          'category': row['category'],
+          'category_id': row['category_id'],
+          'subcategory_id': row['subcategory_id'],
+          'payment_method': row['payment_method'],
+          'description': row['description'],
+          'frequency': row['frequency'],
+          'anchor_day': row['anchor_day'],
+          'next_date': row['next_date'],
+          'end_date': row['end_date'],
+          'active': row['active'] == 1,
+        };
+        final existingRemoteId = row['remote_id'];
+        final response = existingRemoteId == null
+            ? await _apiService.post(
+                ApiService.recurringRulesPath,
+                data: payload,
+              )
+            : await _apiService.put(
+                '${ApiService.recurringRulesPath}$existingRemoteId/',
+                data: payload,
+              );
+        await markPushed(
+          db,
+          'recurring_rules',
+          row,
+          remoteId: response.data['id'] ?? existingRemoteId,
+          path: ApiService.recurringRulesPath,
+        );
+      } catch (e) {
+        debugPrint('Failed to sync recurring rule $id: $e');
+      }
+    }
+  }
+
+  /// Merge pulled recurring rules: tombstones delete, synced local copies
+  /// take the server's version (its `next_date` included), rules we pushed
+  /// ourselves are linked by client id (their local id), and the rest are
+  /// inserted. Unpushed local edits win; when they arrive the server keeps
+  /// the later `next_date`.
+  @visibleForTesting
+  Future<void> mergeRemoteRecurringRules(
+    DatabaseExecutor db,
+    List<dynamic> remote,
+  ) async {
+    for (final data in remote) {
+      final remoteId = data['id'];
+      if (remoteId == null) continue;
+      final clientId = data['client_id']?.toString();
+
+      if (_isTombstone(data)) {
+        await db.delete(
+          'recurring_rules',
+          where: 'remote_id = ? OR (remote_id IS NULL AND id = ?)',
+          whereArgs: [remoteId, clientId],
+        );
+        continue;
+      }
+
+      final amount = double.tryParse(data['amount'].toString());
+      if (amount == null || amount <= 0 || data['next_date'] == null) continue;
+
+      var existing = await db.query(
+        'recurring_rules',
+        columns: ['id', 'is_synced'],
+        where: 'remote_id = ?',
+        whereArgs: [remoteId],
+      );
+      if (existing.isEmpty && clientId != null) {
+        final mine = await db.query(
+          'recurring_rules',
+          columns: ['id', 'is_synced'],
+          where: 'id = ? AND remote_id IS NULL',
+          whereArgs: [clientId],
+        );
+        if (mine.isNotEmpty) {
+          // Our own push whose response was lost.
+          await db.update(
+            'recurring_rules',
+            {'remote_id': remoteId},
+            where: 'id = ?',
+            whereArgs: [clientId],
+          );
+          existing = mine;
+        }
+      }
+      if (existing.isNotEmpty && existing.first['is_synced'] != 1) continue;
+
+      final row = {
+        'amount': amount,
+        'type': data['type'] ?? 'expense',
+        'category': data['category'] ?? 'other',
+        'category_id': data['category_id'],
+        'subcategory_id': data['subcategory_id'],
+        'payment_method': data['payment_method'],
+        'description': data['description'],
+        'frequency': data['frequency'],
+        'anchor_day': data['anchor_day'],
+        'next_date': data['next_date'].toString(),
+        'end_date': data['end_date']?.toString(),
+        'active': data['active'] == false ? 0 : 1,
+        'remote_id': remoteId,
+        'is_synced': 1,
+      };
+      if (existing.isNotEmpty) {
+        await db.update(
+          'recurring_rules',
+          row,
+          where: 'id = ?',
+          whereArgs: [existing.first['id']],
+        );
+      } else {
+        await db.insert('recurring_rules', {
+          ...row,
+          'id': IdGenerator.orNew(clientId),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    }
+  }
+
+  /// Sync body weight. The server keeps one entry per day and answers a
+  /// push for a day another device already logged with that entry, whose
+  /// id this device adopts.
+  Future<void> _syncBodyMetrics() async {
+    final db = await _dbService.getDatabase();
+
+    for (var row in await db.query('body_metrics', where: 'is_synced = 0')) {
+      try {
+        if (row['uuid'] == null) {
+          // Restored from a backup made before body weight synced.
+          await db.update(
+            'body_metrics',
+            {'uuid': IdGenerator.uuid()},
+            where: 'id = ?',
+            whereArgs: [row['id']],
+          );
+          row = (await db.query(
+            'body_metrics',
+            where: 'id = ?',
+            whereArgs: [row['id']],
+          )).single;
+        }
+        final response = await _apiService.post(
+          ApiService.bodyMetricsPath,
+          data: {
+            'client_id': row['uuid'],
+            'date': row['date'],
+            'weight': (row['weight'] as num).toStringAsFixed(2),
+          },
+        );
+        await markPushed(
+          db,
+          'body_metrics',
+          row,
+          remoteId: response.data['id'] ?? row['remote_id'],
+          path: ApiService.bodyMetricsPath,
+        );
+      } catch (e) {
+        debugPrint('Failed to sync body weight ${row['date']}: $e');
+      }
+    }
+
+    try {
+      final started = DateTime.now();
+      final remote = await _fetchAll(
+        ApiService.bodyMetricsPath,
+        'body_metrics',
+      );
+      await db.transaction((txn) async {
+        await mergeRemoteBodyMetrics(txn, remote);
+        await _saveCursor(txn, 'body_metrics', started);
+      });
+    } catch (e) {
+      debugPrint('Failed to fetch body weight from remote: $e');
+    }
+  }
+
+  /// Merge pulled body weight entries, one per day. An unpushed local entry
+  /// for the same day (or the same server row) wins: its push updates the
+  /// server.
+  @visibleForTesting
+  Future<void> mergeRemoteBodyMetrics(
+    DatabaseExecutor db,
+    List<dynamic> remote,
+  ) async {
+    for (final data in remote) {
+      final remoteId = data['id'];
+      final date = data['date']?.toString();
+      if (remoteId == null || date == null) continue;
+
+      if (_isTombstone(data)) {
+        await db.delete(
+          'body_metrics',
+          where: 'remote_id = ? AND is_synced = 1',
+          whereArgs: [remoteId],
+        );
+        continue;
+      }
+
+      final weight = double.tryParse(data['weight'].toString());
+      if (weight == null || weight <= 0) continue;
+
+      final dirty = await db.query(
+        'body_metrics',
+        columns: ['id'],
+        where: 'is_synced = 0 AND (remote_id = ? OR date = ?)',
+        whereArgs: [remoteId, date],
+      );
+      if (dirty.isNotEmpty) continue;
+
+      // A synced entry for the day under another server id was replaced.
+      await db.delete(
+        'body_metrics',
+        where: 'date = ? AND (remote_id IS NULL OR remote_id != ?)',
+        whereArgs: [date, remoteId],
+      );
+      final updated = await db.update(
+        'body_metrics',
+        {'date': date, 'weight': weight, 'is_synced': 1},
+        where: 'remote_id = ?',
+        whereArgs: [remoteId],
+      );
+      if (updated == 0) {
+        await db.insert('body_metrics', {
+          'uuid': IdGenerator.orNew(data['client_id']),
+          'remote_id': remoteId,
+          'date': date,
+          'weight': weight,
+          'is_synced': 1,
+        });
+      }
+    }
+  }
+
   /// Sync Expenses
   Future<void> _syncExpenses() async {
     final db = await _dbService.getDatabase();
@@ -798,6 +1081,12 @@ class SyncService {
                 ApiService.transactionsPath,
                 data: payload,
               );
+        if (existingRemoteId == null && response.data['is_deleted'] == true) {
+          // The server already had this client id, deleted: a recurring
+          // entry another device added and the user then removed.
+          await db.delete('expenses', where: 'id = ?', whereArgs: [map['id']]);
+          continue;
+        }
         await markPushed(
           db,
           'expenses',

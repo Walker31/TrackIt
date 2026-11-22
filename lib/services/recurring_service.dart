@@ -1,10 +1,11 @@
 import 'package:flutter/foundation.dart';
-import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 import '../models/expenses.dart';
+import 'api_service.dart';
 import 'database_service.dart';
-import 'expense_service.dart';
 import 'id_generator.dart';
 import 'notification_service.dart';
+import 'sync_outbox.dart';
+import 'sync_service.dart';
 
 enum Frequency {
   weekly('Weekly', 'week'),
@@ -150,6 +151,10 @@ class RecurringRule {
     timestamp: DateTime(day.year, day.month, day.day, 9),
   );
 
+  /// The id of the transaction this rule adds on [day]: the same on every
+  /// device, so two devices adding the same period make one server row.
+  String entryUuid(DateTime day) => IdGenerator.derived(id, _date(day));
+
   static String _date(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
@@ -173,41 +178,71 @@ DateTime _onDay(int year, int month, int day) {
 }
 
 /// Stores recurring rules and adds their transactions when they fall due.
+///
+/// Rules sync with the server. So that two devices don't both add the same
+/// rent payment, in server mode [addDue] runs only from [SyncService], right
+/// after it pulled the rules (and so their latest `next_date`); and every
+/// added transaction gets [RecurringRule.entryUuid] as its client id, so
+/// even two devices adding the same period at once leave one copy.
 class RecurringService {
   final DatabaseService _db = DatabaseService();
-  final ExpenseService _expenses = ExpenseService();
 
   /// Notification ids for "due tomorrow" reminders start here.
   static const _reminderBase = 6000;
 
+  static const _table = 'recurring_rules';
+
   Future<List<RecurringRule>> all() async {
     final db = await _db.getDatabase();
-    final rows = await db.query(
-      'recurring_rules',
-      orderBy: 'active DESC, next_date ASC',
-    );
+    final rows = await db.query(_table, orderBy: 'active DESC, next_date ASC');
     return rows.map(RecurringRule.fromMap).toList();
   }
 
+  /// Insert or update [rule], keeping its server id, and push it.
   Future<void> save(RecurringRule rule) async {
     final db = await _db.getDatabase();
-    await db.insert(
-      'recurring_rules',
-      rule.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final row = {...rule.toMap(), 'is_synced': 0};
+    await db.transaction((txn) async {
+      final updated = await txn.update(
+        _table,
+        row,
+        where: 'id = ?',
+        whereArgs: [rule.id],
+      );
+      // A rule brought back with undo is inserted again under its old id;
+      // the server revives it by client id.
+      if (updated == 0) await txn.insert(_table, row);
+    });
     await scheduleReminders();
+    SyncService().performSync();
   }
 
   Future<void> delete(String id) async {
     final db = await _db.getDatabase();
-    await db.delete('recurring_rules', where: 'id = ?', whereArgs: [id]);
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        _table,
+        columns: ['remote_id'],
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      final remoteId = rows.isEmpty ? null : rows.first['remote_id'];
+      if (remoteId != null) {
+        await SyncOutbox.enqueueDelete(
+          txn,
+          '${ApiService.recurringRulesPath}$remoteId/',
+        );
+      }
+      await txn.delete(_table, where: 'id = ?', whereArgs: [id]);
+    });
     await scheduleReminders();
+    SyncService().performSync();
   }
 
   /// Adds every transaction that has fallen due up to [now] (catching up
   /// on missed periods) and moves each rule to its next date. Returns how
-  /// many were added.
+  /// many were added. A period whose transaction is already here (pulled
+  /// from another device that added it first) is skipped.
   Future<int> addDue({DateTime? now}) async {
     final today = _dateOnly(now ?? DateTime.now());
     final db = await _db.getDatabase();
@@ -223,20 +258,43 @@ class RecurringService {
         next = advance(next, rule.frequency, rule.anchorDay);
       }
       if (due.isEmpty) continue;
-      // Move the rule first, so a crash can't add the same entry twice.
       final ended = rule.endDate != null && next.isAfter(rule.endDate!);
-      await db.update(
-        'recurring_rules',
-        {'next_date': RecurringRule._date(next), if (ended) 'active': 0},
-        where: 'id = ?',
-        whereArgs: [rule.id],
-      );
-      for (final day in due) {
-        await _expenses.addExpense(rule.expenseOn(day));
-        added++;
-      }
+      // One transaction: the rule moves on exactly when its entries land.
+      added += await db.transaction((txn) async {
+        await txn.update(
+          _table,
+          {
+            'next_date': RecurringRule._date(next),
+            if (ended) 'active': 0,
+            'is_synced': 0,
+          },
+          where: 'id = ?',
+          whereArgs: [rule.id],
+        );
+        var n = 0;
+        for (final day in due) {
+          final uuid = rule.entryUuid(day);
+          final have = await txn.query(
+            'expenses',
+            columns: ['id'],
+            where: 'uuid = ?',
+            whereArgs: [uuid],
+          );
+          if (have.isNotEmpty) continue;
+          await txn.insert('expenses', {
+            ...rule.expenseOn(day).toMap(),
+            'is_synced': 0,
+            'uuid': uuid,
+          });
+          n++;
+        }
+        return n;
+      });
     }
-    if (added > 0) await scheduleReminders();
+    if (added > 0) {
+      await scheduleReminders();
+      SyncService().performSync();
+    }
     return added;
   }
 

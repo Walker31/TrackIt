@@ -1,27 +1,63 @@
-import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
+import 'api_service.dart';
 import 'database_service.dart';
+import 'id_generator.dart';
+import 'sync_outbox.dart';
+import 'sync_service.dart';
 
 typedef WeightEntry = ({DateTime date, double weight});
 
 /// Body weight, one entry per day (a second entry the same day replaces
-/// the first).
+/// the first). Entries sync with the server, which also keeps one per day.
 class BodyService {
   final DatabaseService _db = DatabaseService();
+
+  static const _table = 'body_metrics';
 
   static String _day(DateTime d) =>
       '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   Future<void> log(double weight, {DateTime? on}) async {
     final db = await _db.getDatabase();
-    await db.insert('body_metrics', {
-      'date': _day(on ?? DateTime.now()),
-      'weight': weight,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    final day = _day(on ?? DateTime.now());
+    await db.transaction((txn) async {
+      // Update in place so the entry keeps its server id.
+      final updated = await txn.update(
+        _table,
+        {'weight': weight, 'is_synced': 0},
+        where: 'date = ?',
+        whereArgs: [day],
+      );
+      if (updated == 0) {
+        await txn.insert(_table, {
+          'uuid': IdGenerator.uuid(),
+          'date': day,
+          'weight': weight,
+          'is_synced': 0,
+        });
+      }
+    });
+    SyncService().performSync();
   }
 
   Future<void> delete(DateTime day) async {
     final db = await _db.getDatabase();
-    await db.delete('body_metrics', where: 'date = ?', whereArgs: [_day(day)]);
+    await db.transaction((txn) async {
+      final rows = await txn.query(
+        _table,
+        columns: ['remote_id'],
+        where: 'date = ?',
+        whereArgs: [_day(day)],
+      );
+      final remoteId = rows.isEmpty ? null : rows.first['remote_id'];
+      if (remoteId != null) {
+        await SyncOutbox.enqueueDelete(
+          txn,
+          '${ApiService.bodyMetricsPath}$remoteId/',
+        );
+      }
+      await txn.delete(_table, where: 'date = ?', whereArgs: [_day(day)]);
+    });
+    SyncService().performSync();
   }
 
   /// Entries oldest first.

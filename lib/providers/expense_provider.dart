@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/expenses.dart';
+import '../services/app_mode_service.dart';
 import '../services/catalog_service.dart';
 import '../services/expense_service.dart';
 import '../services/budget_alert_service.dart';
@@ -137,6 +138,9 @@ class ExpenseProvider extends ChangeNotifier {
   static Future<int>? _dueRun;
 
   Future<void> _addDueRecurring() async {
+    // Signed in, the sync adds them right after pulling the rules, so a
+    // second device can't add a period this one already did.
+    if (AppModeService.isServer) return;
     try {
       _dueRun ??= RecurringService().addDue().whenComplete(
         () => _dueRun = null,
