@@ -35,6 +35,10 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
   int _reps = 8;
   int _streak = 0;
 
+  /// The exercise whose numbers are loaded into the pickers, so they're
+  /// seeded once per exercise rather than reset on every rebuild.
+  int? _seededExerciseId;
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +66,13 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
       0,
       workout.exercises.isEmpty ? 0 : workout.exercises.length - 1,
     );
+    if (workout.exercises.isNotEmpty) {
+      final current = workout.exercises[index];
+      if (current.id != null && current.id != _seededExerciseId) {
+        _seededExerciseId = current.id;
+        _seedFrom(current);
+      }
+    }
 
     return Scaffold(
       body: Stack(
@@ -72,7 +83,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
               SliverToBoxAdapter(
                 child: PageHeader(
                   title: 'Workout',
-                  overline: _streak > 1 ? '🔥 $_streak-day streak' : null,
+                  overline: _streak > 1 ? '$_streak-day streak' : null,
                   actions: [
                     IconButton(
                       tooltip: 'Workout history',
@@ -160,6 +171,10 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                             provider: provider,
                             weight: _weight,
                             reps: _reps,
+                            // Nothing planned or done yet today: start
+                            // from last time's numbers.
+                            prefillFromLastTime: workout.exercises[index].sets
+                                .every((s) => !s.isCompleted && s.weight <= 0),
                             onChanged: (w, r) => setState(() {
                               _weight = w;
                               _reps = r;
@@ -220,14 +235,22 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
     setState(() {
       _selectedExerciseIndex = index;
       final exercise = workout.exercises[index];
-      final nextSet =
-          exercise.sets.where((s) => !s.isCompleted).firstOrNull ??
-          exercise.sets.lastOrNull;
-      if (nextSet != null && nextSet.weight > 0) {
-        _weight = nextSet.weight;
-        _reps = nextSet.reps;
-      }
+      _seededExerciseId = exercise.id;
+      _seedFrom(exercise);
     });
+  }
+
+  /// Loads the next planned set's numbers, or the last done set's.
+  void _seedFrom(Exercise exercise) {
+    final nextSet =
+        exercise.sets.where((s) => !s.isCompleted).firstOrNull ??
+        exercise.sets.lastOrNull;
+    final lastDone = exercise.sets.where((s) => s.isCompleted).lastOrNull;
+    final source = nextSet != null && nextSet.weight > 0 ? nextSet : lastDone;
+    if (source != null && (source.weight > 0 || source.reps > 0)) {
+      _weight = source.weight;
+      _reps = source.reps;
+    }
   }
 
   Future<void> _exerciseOptions(Exercise exercise) async {

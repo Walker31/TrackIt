@@ -213,7 +213,7 @@ class _OnboardingSheetState extends ConsumerState<OnboardingSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Welcome to TrackIt 👋', style: AppTextStyles.h2),
+            const Text('Welcome to TrackIt', style: AppTextStyles.h2),
             const SizedBox(height: 6),
             Text(
               'Two quick choices and Today has something to show. You can '

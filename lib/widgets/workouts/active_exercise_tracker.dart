@@ -23,6 +23,9 @@ class ActiveExerciseTracker extends StatefulWidget {
   final double weightStep;
   final void Function(double weight, int reps) onChanged;
 
+  /// Load last time's top set into the pickers once it's known.
+  final bool prefillFromLastTime;
+
   const ActiveExerciseTracker({
     super.key,
     required this.exercise,
@@ -31,6 +34,7 @@ class ActiveExerciseTracker extends StatefulWidget {
     required this.reps,
     required this.onChanged,
     this.weightStep = 2.5,
+    this.prefillFromLastTime = false,
   });
 
   @override
@@ -70,6 +74,10 @@ class _ActiveExerciseTrackerState extends State<ActiveExerciseTracker> {
       _last = sessions.firstOrNull;
       _records = ExerciseRecords.from(name, '', sessions);
     });
+    final last = _last;
+    if (widget.prefillFromLastTime && last != null) {
+      widget.onChanged(last.topSet.weight, last.topSet.reps);
+    }
   }
 
   /// Records so far: earlier sessions plus sets already done today.

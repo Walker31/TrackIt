@@ -437,7 +437,11 @@ class _FinishedBanner extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('🎉', style: TextStyle(fontSize: 32)),
+            const Icon(
+              Icons.celebration_rounded,
+              color: Colors.white,
+              size: 32,
+            ),
             const SizedBox(height: 8),
             Text(
               'Workout complete',
@@ -546,7 +550,7 @@ class _ExerciseCard extends StatelessWidget {
                       Text(
                         s.isCompleted
                             ? '${formatWeight(s.weight)} kg × ${s.reps}'
-                            : 'Skipped',
+                            : 'Not done',
                         style: AppTextStyles.bodyMd.copyWith(
                           color: s.isCompleted
                               ? AppColors.textPrimary

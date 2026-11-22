@@ -160,13 +160,27 @@ class _QuickStartState extends State<_QuickStart> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                streak > 0
-                    ? '🔥 $streak-day streak. Keep it going?'
-                    : 'Ready when you are.',
-                style: AppTextStyles.bodyMd.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+              Row(
+                children: [
+                  Icon(
+                    streak > 0
+                        ? Icons.local_fire_department_rounded
+                        : Icons.fitness_center_rounded,
+                    size: 20,
+                    color: streak > 0 ? AppColors.accent : AppColors.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      streak > 0
+                          ? '$streak-day streak. Keep it going?'
+                          : 'Ready when you are.',
+                      style: AppTextStyles.bodyMd.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               Wrap(
