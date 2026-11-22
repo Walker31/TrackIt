@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:math';
+import 'package:crypto/crypto.dart';
 
 /// The one place ids are made. The pattern, per kind of row:
 ///
@@ -11,6 +13,9 @@ import 'dart:math';
 ///   `client_id` it returns (see [orNew]).
 /// - **Catalog rows** whose primary key is shared with the server
 ///   (categories, events, budgets) use a [uuid] as their `id`.
+/// - **Transactions added by a recurring rule** get [derived] from the rule
+///   and the day, so two devices adding the same period make the same id
+///   and the server keeps one copy.
 /// - **Subcategories** use [subcategoryId], a deterministic key that matches
 ///   the server's built-in defaults.
 /// - Rows only ever sent nested in a parent (routine exercises, expense
@@ -28,6 +33,27 @@ class IdGenerator {
     final b = List<int>.generate(16, (_) => _random.nextInt(256));
     b[6] = (b[6] & 0x0f) | 0x40; // version 4
     b[8] = (b[8] & 0x3f) | 0x80; // RFC 4122 variant
+    return _format(b);
+  }
+
+  /// Name-based (RFC 4122 v5, SHA-1) UUID: always the same for the same
+  /// [namespace] UUID and [name].
+  static String derived(String namespace, String name) {
+    final ns = namespace.replaceAll('-', '');
+    final nsBytes = [
+      for (var i = 0; i + 1 < ns.length && i < 32; i += 2)
+        int.parse(ns.substring(i, i + 2), radix: 16),
+    ];
+    final b = sha1
+        .convert([...nsBytes, ...utf8.encode(name)])
+        .bytes
+        .sublist(0, 16);
+    b[6] = (b[6] & 0x0f) | 0x50; // version 5
+    b[8] = (b[8] & 0x3f) | 0x80; // RFC 4122 variant
+    return _format(b);
+  }
+
+  static String _format(List<int> b) {
     final h = b.map((v) => v.toRadixString(16).padLeft(2, '0')).join();
     return '${h.substring(0, 8)}-${h.substring(8, 12)}-'
         '${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}';

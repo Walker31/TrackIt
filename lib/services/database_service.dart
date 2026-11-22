@@ -10,7 +10,7 @@ import 'sync_outbox.dart';
 /// This service owns database initialization, schema creation, and all
 /// migrations so older installs can safely upgrade without losing data.
 class DatabaseService {
-  static const int _databaseVersion = 7;
+  static const int _databaseVersion = 8;
 
   /// Schema version written into backups, so an older app can refuse a
   /// backup made by a newer one.
@@ -132,7 +132,8 @@ class DatabaseService {
         await _migrateToV6(txn);
       }
 
-      if (oldVersion < 7) {
+      // v7 added the tables, v8 their sync columns; both are idempotent.
+      if (oldVersion < 8) {
         await _ensureDeviceFeatureTables(txn);
       }
 
@@ -202,9 +203,9 @@ class DatabaseService {
     await _ensureCompatibleSchema(db);
   }
 
-  /// Tables for features kept on this device (and in backups) that the
-  /// server doesn't store yet: recurring transactions and body weight.
-  /// Idempotent.
+  /// Recurring transactions and body weight. They started out on the
+  /// device only (v7); v8 syncs them, adding `remote_id` / `is_synced` (and
+  /// a `uuid` for body weight, whose local id is an integer). Idempotent.
   Future<void> _ensureDeviceFeatureTables(DatabaseExecutor db) async {
     // Foreign-currency entries: the code and the amount as entered.
     await _ensureColumn(db, 'expenses', 'currency', 'TEXT');
@@ -224,17 +225,30 @@ class DatabaseService {
         next_date TEXT NOT NULL,
         end_date TEXT,
         active INTEGER NOT NULL DEFAULT 1,
+        remote_id INTEGER,
+        is_synced INTEGER NOT NULL DEFAULT 0,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     ''');
     await db.execute('''
       CREATE TABLE IF NOT EXISTS body_metrics (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT,
+        remote_id INTEGER,
+        is_synced INTEGER NOT NULL DEFAULT 0,
         date TEXT NOT NULL UNIQUE,
         weight REAL NOT NULL CHECK (weight > 0),
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     ''');
+    for (final t in ['recurring_rules', 'body_metrics']) {
+      await _ensureColumn(db, t, 'remote_id', 'INTEGER');
+      await _ensureColumn(db, t, 'is_synced', 'INTEGER NOT NULL DEFAULT 0');
+    }
+    await _ensureColumn(db, 'body_metrics', 'uuid', 'TEXT');
+    await db.execute(
+      'UPDATE body_metrics SET uuid = $_uuidSql WHERE uuid IS NULL',
+    );
   }
 
   Future<void> _migrateToV5(DatabaseExecutor db) async {
