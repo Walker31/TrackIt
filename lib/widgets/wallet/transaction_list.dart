@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../theme/app_colors.dart';
 import '../../providers/expense_provider.dart';
 import '../../models/expenses.dart';
+import '../../models/finance/currency.dart';
 import '../app_snackbar.dart';
 import '../confirm_dialog.dart';
 import '../empty_state.dart';
@@ -115,6 +116,8 @@ class TransactionList extends StatelessWidget {
                 if (e.description != null) provider.categoryOf(e).name,
                 DateFormat('hh:mm a').format(e.timestamp),
                 if (e.paymentMethod != null) e.paymentMethod!.label,
+                if (e.isForeign)
+                  currencyFor(e.currency).format(e.originalAmount!),
               ].join(' · '),
               trailingLabel: e.isIncome ? 'you received' : 'you spent',
               trailingAmount: formatRupees(e.amount),

@@ -7,6 +7,8 @@ import '../../theme/app_colors.dart';
 import '../../theme/app_text_styles.dart';
 import '../../services/catalog_service.dart';
 import '../../services/cloudinary_service.dart';
+import '../../services/prefs_service.dart';
+import '../../models/finance/currency.dart';
 import '../../services/recurring_service.dart' show Frequency;
 import '../animated/animated_segmented_tabs.dart';
 import '../animated/fade_slide_in.dart';
@@ -65,7 +67,19 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   String? _attachmentUrl;
   bool _uploading = false;
 
-  double get _amount => double.tryParse(_amountController.text) ?? 0;
+  /// The number typed, in [_currency].
+  double get _entered => double.tryParse(_amountController.text) ?? 0;
+
+  Currency _currency = homeCurrency;
+  final _rateController = TextEditingController();
+  double? get _rate => double.tryParse(_rateController.text);
+
+  /// The amount in rupees, which is what gets saved and totalled.
+  double get _amount {
+    if (_currency.isHome) return _entered;
+    final rate = _rate;
+    return rate == null || rate <= 0 ? 0 : toHome(_entered, rate);
+  }
 
   bool get _editing => widget.initial != null;
 
@@ -97,7 +111,16 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       _pendingSubcategoryId = initial.subcategoryId;
       _pendingEventId = initial.eventId;
       _attachmentUrl = initial.attachmentUrl;
+      if (initial.isForeign) {
+        _currency = currencyFor(initial.currency);
+        final original = initial.originalAmount!;
+        _amountController.text = original == original.roundToDouble()
+            ? original.toStringAsFixed(0)
+            : original.toStringAsFixed(2);
+        _rateController.text = _trimRate(initial.amount / original);
+      }
     }
+    _rateController.addListener(() => setState(() => _error = null));
     _amountController.addListener(() => setState(() => _error = null));
     _load();
   }
@@ -106,6 +129,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   void dispose() {
     _amountController.dispose();
     _descController.dispose();
+    _rateController.dispose();
     super.dispose();
   }
 
@@ -217,10 +241,21 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   void _save() {
     final amount = _amount;
     final category = _category;
+    if (!_currency.isHome && (_rate == null || _rate! <= 0)) {
+      HapticFeedback.mediumImpact();
+      setState(
+        () => _error =
+            'Enter the rate: how many rupees one ${_currency.code} is.',
+      );
+      return;
+    }
     if (amount <= 0) {
       HapticFeedback.mediumImpact();
       setState(() => _error = 'Enter an amount greater than 0.');
       return;
+    }
+    if (!_currency.isHome) {
+      PrefsService().set('rate_${_currency.code}', _rateController.text);
     }
     if (category == null) {
       HapticFeedback.mediumImpact();
@@ -235,7 +270,9 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
         initial != null && DateUtils.isSameDay(initial.timestamp, _date);
     final saved = Expense(
       id: initial?.id,
-      attachmentUrl: initial?.attachmentUrl,
+      attachmentUrl: _attachmentUrl,
+      currency: _currency.isHome ? null : _currency.code,
+      originalAmount: _currency.isHome ? null : _entered,
       amount: amount,
       type: _type,
       category: category.legacy,
@@ -348,8 +385,11 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                               _category?.colorValue ?? AppColors.textSecondary,
                           accent: accent,
                           onIconTap: _jumpToCategories,
+                          currencySymbol: _currency.symbol,
                         ),
                       ),
+                      const SizedBox(height: 16),
+                      _currencyRow(),
                       const SizedBox(height: 28),
                       FadeSlideIn(
                         key: _categoryKey,
@@ -442,6 +482,111 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
           ),
         );
       },
+    );
+  }
+
+  static String _trimRate(double r) {
+    final s = r.toStringAsFixed(4);
+    return s.contains('.') ? s.replaceFirst(RegExp(r'\.?0+$'), '') : s;
+  }
+
+  Future<void> _selectCurrency(Currency c) async {
+    if (c == _currency) return;
+    setState(() => _currency = c);
+    if (c.isHome) return;
+    final saved = await PrefsService().get('rate_${c.code}');
+    if (mounted && _currency == c) {
+      setState(() => _rateController.text = saved ?? '');
+    }
+  }
+
+  Future<void> _pickOtherCurrency() async {
+    final picked = await showModalBottomSheet<Currency>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final c in currencies)
+              ListTile(
+                leading: SizedBox(
+                  width: 44,
+                  child: Text(c.symbol.trim(), style: AppTextStyles.h3),
+                ),
+                title: Text(c.name),
+                trailing: Text(c.code),
+                selected: c == _currency,
+                onTap: () => Navigator.pop(context, c),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null) await _selectCurrency(picked);
+  }
+
+  /// Rupees by default; a foreign currency asks for the rate and shows the
+  /// rupee amount that will be saved.
+  Widget _currencyRow() {
+    const quick = ['INR', 'USD', 'EUR'];
+    final foreign = !_currency.isHome;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _chipRow([
+          for (final code in quick)
+            _SelectChip(
+              label: code,
+              selected: _currency.code == code,
+              onTap: () => _selectCurrency(currencyFor(code)),
+            ),
+          if (!quick.contains(_currency.code))
+            _SelectChip(
+              label: _currency.code,
+              selected: true,
+              onTap: _pickOtherCurrency,
+            ),
+          _SelectChip(
+            label: 'Other',
+            icon: Icons.language_rounded,
+            selected: false,
+            onTap: _pickOtherCurrency,
+          ),
+        ]),
+        if (foreign) ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Text('1 ${_currency.code} = \u20b9', style: AppTextStyles.bodyMd),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 110,
+                child: TextField(
+                  controller: _rateController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                  ],
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    hintText: 'rate',
+                  ),
+                ),
+              ),
+              const Spacer(),
+              if (_amount > 0)
+                Text(
+                  '= ${formatRupees(_amount)}',
+                  style: AppTextStyles.bodyMd.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 

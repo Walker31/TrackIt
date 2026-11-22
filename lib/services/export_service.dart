@@ -53,6 +53,8 @@ class ExportService {
           'Paid with',
           'Note',
           'Trip',
+          'Currency',
+          'Amount in currency',
         ]),
       );
     for (final row in rows) {
@@ -82,6 +84,8 @@ class ExportService {
           e.paymentMethod?.label ?? '',
           e.description ?? '',
           events[e.eventId] ?? '',
+          e.isForeign ? e.currency : 'INR',
+          e.isForeign ? e.originalAmount!.toStringAsFixed(2) : '',
         ]),
       );
     }

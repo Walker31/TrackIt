@@ -22,6 +22,12 @@ class Expense {
   final PaymentMethod? paymentMethod;
   final String? attachmentUrl;
 
+  /// Set when entered in a foreign currency: its code and the amount in it.
+  /// [amount] is always rupees. Kept on this device; the server stores only
+  /// the rupee amount.
+  final String? currency;
+  final double? originalAmount;
+
   Expense({
     this.id,
     required this.amount,
@@ -34,7 +40,12 @@ class Expense {
     this.eventId,
     this.paymentMethod,
     this.attachmentUrl,
+    this.currency,
+    this.originalAmount,
   });
+
+  bool get isForeign =>
+      currency != null && currency != 'INR' && originalAmount != null;
 
   bool get isIncome => type == TxnType.income;
 
@@ -51,6 +62,8 @@ class Expense {
       'event_id': eventId,
       'payment_method': paymentMethod?.name,
       'attachment_url': attachmentUrl,
+      'currency': currency,
+      'original_amount': originalAmount,
       'updated_at': DateTime.now().toIso8601String(),
     };
   }
@@ -68,6 +81,8 @@ class Expense {
       eventId: map['event_id'] as String?,
       paymentMethod: PaymentMethod.fromString(map['payment_method'] as String?),
       attachmentUrl: map['attachment_url'] as String?,
+      currency: map['currency'] as String?,
+      originalAmount: (map['original_amount'] as num?)?.toDouble(),
     );
   }
 
@@ -96,6 +111,8 @@ class Expense {
     String? eventId,
     PaymentMethod? paymentMethod,
     String? attachmentUrl,
+    String? currency,
+    double? originalAmount,
   }) {
     return Expense(
       id: id ?? this.id,
@@ -109,6 +126,8 @@ class Expense {
       eventId: eventId ?? this.eventId,
       paymentMethod: paymentMethod ?? this.paymentMethod,
       attachmentUrl: attachmentUrl ?? this.attachmentUrl,
+      currency: currency ?? this.currency,
+      originalAmount: originalAmount ?? this.originalAmount,
     );
   }
 }

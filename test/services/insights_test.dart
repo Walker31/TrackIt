@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:trackit/models/expenses.dart';
 import 'package:trackit/services/database_service.dart';
 import 'package:trackit/services/insights_service.dart';

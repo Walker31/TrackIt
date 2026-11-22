@@ -25,6 +25,9 @@ class ExpenseEntryFields extends StatelessWidget {
   final ValueChanged<String>? onAmountChanged;
   final bool autofocus;
 
+  /// Shown in the amount tile; rupees unless entering a foreign amount.
+  final String currencySymbol;
+
   const ExpenseEntryFields({
     super.key,
     required this.descriptionController,
@@ -35,6 +38,7 @@ class ExpenseEntryFields extends StatelessWidget {
     this.onIconTap,
     this.onAmountChanged,
     this.autofocus = true,
+    this.currencySymbol = '₹',
   });
 
   static InputDecoration _underline(String hint, TextStyle hintStyle) =>
@@ -127,11 +131,14 @@ class ExpenseEntryFields extends StatelessWidget {
                       : accent;
                   return _Tile(
                     color: color,
-                    child: Text(
-                      '₹',
-                      style: AppTextStyles.h2.copyWith(
-                        color: color,
-                        fontWeight: FontWeight.w600,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        currencySymbol.trim(),
+                        style: AppTextStyles.h2.copyWith(
+                          color: color,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   );

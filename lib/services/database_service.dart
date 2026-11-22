@@ -206,6 +206,9 @@ class DatabaseService {
   /// server doesn't store yet: recurring transactions and body weight.
   /// Idempotent.
   Future<void> _ensureDeviceFeatureTables(DatabaseExecutor db) async {
+    // Foreign-currency entries: the code and the amount as entered.
+    await _ensureColumn(db, 'expenses', 'currency', 'TEXT');
+    await _ensureColumn(db, 'expenses', 'original_amount', 'REAL');
     await db.execute('''
       CREATE TABLE IF NOT EXISTS recurring_rules (
         id TEXT PRIMARY KEY,
