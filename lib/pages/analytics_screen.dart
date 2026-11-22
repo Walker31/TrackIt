@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_providers.dart';
 import '../providers/expense_provider.dart';
 import '../services/stats_service.dart';
+import '../services/insights_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../theme/responsive.dart';
@@ -32,7 +33,14 @@ class _StatsData {
   final List<StatPoint> volume;
   final List<({String group, int sets})> muscles;
   final List<Expense> expenses;
-  _StatsData(this.spending, this.volume, this.muscles, this.expenses);
+  final List<Insight> insights;
+  _StatsData(
+    this.spending,
+    this.volume,
+    this.muscles,
+    this.expenses,
+    this.insights,
+  );
 }
 
 class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
@@ -43,17 +51,19 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   // workouts change rather than on every visit.
   Future<_StatsData> _load() async {
     final s = StatsService();
-    final (spending, volume, muscles, rows) = await (
+    final (spending, volume, muscles, rows, insights) = await (
       s.spending(_range),
       s.volume(_range),
       s.muscleSets(_range),
       s.expenseRows(_range),
+      InsightsService().insights(),
     ).wait;
     return _StatsData(
       spending,
       volume,
       muscles,
       rows.map(Expense.fromMap).toList(),
+      insights,
     );
   }
 
@@ -111,6 +121,10 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                   return ResponsiveColumns(
                     gap: 40,
                     left: [
+                      if (d != null && d.insights.isNotEmpty) ...[
+                        FadeSlideIn(child: _InsightsCard(insights: d.insights)),
+                        const SizedBox(height: 32),
+                      ],
                       const FadeSlideIn(
                         child: SectionHeader(title: 'This month'),
                       ),
@@ -203,6 +217,68 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
     switchInCurve: Curves.easeOutCubic,
     child: child,
   );
+}
+
+/// Patterns across spending and training, from the last six weeks.
+class _InsightsCard extends StatelessWidget {
+  final List<Insight> insights;
+  const _InsightsCard({required this.insights});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.lightbulb_outline_rounded, color: AppColors.accent),
+              const SizedBox(width: 8),
+              const Text('Insights', style: AppTextStyles.h3),
+            ],
+          ),
+          for (final i in insights)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    switch (i.kind) {
+                      InsightKind.money => Icons.payments_outlined,
+                      InsightKind.training => Icons.fitness_center_rounded,
+                      InsightKind.mixed => Icons.compare_arrows_rounded,
+                    },
+                    size: 18,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          i.title,
+                          style: AppTextStyles.bodyMd.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          i.body,
+                          style: AppTextStyles.bodySm.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _RangePicker extends StatelessWidget {
