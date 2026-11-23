@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'database_service.dart';
 import 'notification_service.dart';
+import 'nudge_service.dart';
 import 'prefs_service.dart';
 import 'progress_service.dart';
 
@@ -63,6 +64,8 @@ class ReminderService {
   }
 
   Future<void> reschedule({DateTime? now}) async {
+    // The daytime nudges follow the same moments (start-up, a new entry).
+    await NudgeService().reschedule(now: now);
     final notifications = NotificationService();
     try {
       await notifications.cancel(_legacyDailyId);

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -14,6 +16,19 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   bool _ready = false;
+
+  /// Payloads of notifications the user tapped while the app was running
+  /// (e.g. "add_expense"), and the one that launched it.
+  final _taps = StreamController<String>.broadcast();
+  Stream<String> get taps => _taps.stream;
+  String? _launchPayload;
+
+  /// The payload of the notification that opened the app, once.
+  String? takeLaunchPayload() {
+    final p = _launchPayload;
+    _launchPayload = null;
+    return p;
+  }
 
   /// Platforms this service delivers notifications on. Web, Windows and
   /// Linux are skipped: the plugin either lacks them or can't schedule there.
@@ -50,7 +65,16 @@ class NotificationService {
           iOS: darwinSettings,
           macOS: darwinSettings,
         ),
+        onDidReceiveNotificationResponse: (response) {
+          final p = response.payload;
+          if (p != null && p.isNotEmpty) _taps.add(p);
+        },
       );
+      final launch = await _notificationsPlugin
+          .getNotificationAppLaunchDetails();
+      if (launch?.didNotificationLaunchApp ?? false) {
+        _launchPayload = launch?.notificationResponse?.payload;
+      }
 
       // Android 13+ hides every notification until the user allows them.
       await _notificationsPlugin
@@ -147,17 +171,20 @@ class NotificationService {
     required String title,
     required String body,
     required DateTime at,
+    String? payload,
+    String channelId = 'rest_timer_channel',
+    String channelName = 'Rest timer',
   }) async {
     if (!_ready) return;
-    const details = NotificationDetails(
+    final details = NotificationDetails(
       android: AndroidNotificationDetails(
-        'rest_timer_channel',
-        'Rest timer',
+        channelId,
+        channelName,
         importance: Importance.max,
         priority: Priority.high,
       ),
-      iOS: DarwinNotificationDetails(),
-      macOS: DarwinNotificationDetails(),
+      iOS: const DarwinNotificationDetails(),
+      macOS: const DarwinNotificationDetails(),
     );
     try {
       await _notificationsPlugin.zonedSchedule(
@@ -167,6 +194,7 @@ class NotificationService {
         scheduledDate: tz.TZDateTime.from(at, tz.local),
         notificationDetails: details,
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        payload: payload,
       );
     } catch (e) {
       debugPrint('NotificationService: could not schedule once ($e)');

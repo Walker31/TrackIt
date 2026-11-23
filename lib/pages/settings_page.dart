@@ -16,6 +16,7 @@ import '../services/backup_service.dart';
 import '../services/export_service.dart';
 import '../services/reminder_service.dart';
 import '../services/recurring_service.dart';
+import '../services/nudge_service.dart';
 import '../services/prefs_service.dart';
 import '../utils/payment_request.dart';
 import '../services/sync_service.dart';
@@ -46,6 +47,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool? _reminderOn;
   String? _upiId;
   int _billHour = 19;
+  bool _nudges = true;
   (int, int) _reminderTime = (20, 0);
 
   /// Last finished sync and changes still waiting to upload.
@@ -57,15 +59,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Future<void> _loadReminder() async {
     final r = ReminderService();
-    final (on, time, upi, billHour) = await (
+    final (on, time, upi, billHour, nudges) = await (
       r.enabled(),
       r.time(),
       PrefsService().get('upi_id'),
       PrefsService().getInt(RecurringService.reminderHourKey, 19),
+      NudgeService().enabled(),
     ).wait;
     if (mounted) {
       setState(() {
         _upiId = upi;
+        _nudges = nudges;
         _billHour = billHour;
         _reminderOn = on;
         _reminderTime = time;
@@ -243,6 +247,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     setState(() => _reminderOn = v);
                     await ReminderService().setEnabled(v);
                   },
+          ),
+        ),
+        _SettingsTile(
+          icon: Icons.tips_and_updates_outlined,
+          title: 'Daytime nudges',
+          subtitle:
+              'A friendly reminder at a random time between 10 AM and 7:30 PM. '
+              'Skipped once you have added a spend that day.',
+          showChevron: false,
+          trailing: Switch(
+            value: _nudges,
+            onChanged: (v) async {
+              setState(() => _nudges = v);
+              await NudgeService().setEnabled(v);
+            },
           ),
         ),
         if (_reminderOn ?? true)

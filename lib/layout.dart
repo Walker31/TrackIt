@@ -16,6 +16,7 @@ import 'package:trackit/widgets/brand_mark.dart';
 import 'package:trackit/widgets/sync_status.dart';
 import 'dart:async';
 import 'package:trackit/services/launch_requests.dart';
+import 'package:trackit/services/notification_service.dart';
 import 'package:trackit/utils/sms_parser.dart';
 import 'package:trackit/widgets/app_snackbar.dart';
 
@@ -87,10 +88,21 @@ class _LayoutState extends State<Layout> with SingleTickerProviderStateMixin {
   StreamSubscription<LaunchRequest>? _launchSub;
 
   /// Widget buttons and shared SMS (Android), at start-up and while open.
+  StreamSubscription<String>? _notificationSub;
+
   Future<void> _listenForLaunchRequests() async {
     _launchSub = LaunchRequests.stream.listen(_handle);
+    _notificationSub = NotificationService().taps.listen(_handlePayload);
     final first = await LaunchRequests.takeInitial();
     if (first != null && mounted) _handle(first);
+    final tapped = NotificationService().takeLaunchPayload();
+    if (tapped != null && mounted) _handlePayload(tapped);
+  }
+
+  /// A tapped notification: nudges open "add expense".
+  void _handlePayload(String payload) {
+    if (!mounted) return;
+    if (payload == 'add_expense') _handle(const AddExpenseRequest());
   }
 
   void _handle(LaunchRequest request) {
@@ -136,6 +148,7 @@ class _LayoutState extends State<Layout> with SingleTickerProviderStateMixin {
   @override
   void dispose() {
     _launchSub?.cancel();
+    _notificationSub?.cancel();
     _enter.dispose();
     super.dispose();
   }
