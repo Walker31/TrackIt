@@ -31,6 +31,9 @@ class Expense {
   /// The account it was paid from or into, if accounts are in use.
   final String? accountId;
 
+  /// The recurring rule that added it, if any (kept on this device).
+  final String? recurringId;
+
   Expense({
     this.id,
     required this.amount,
@@ -46,6 +49,7 @@ class Expense {
     this.currency,
     this.originalAmount,
     this.accountId,
+    this.recurringId,
   });
 
   bool get isForeign =>
@@ -69,6 +73,7 @@ class Expense {
       'currency': currency,
       'original_amount': originalAmount,
       'account_id': accountId,
+      'recurring_id': recurringId,
       'updated_at': DateTime.now().toIso8601String(),
     };
   }
@@ -89,6 +94,7 @@ class Expense {
       currency: map['currency'] as String?,
       originalAmount: (map['original_amount'] as num?)?.toDouble(),
       accountId: map['account_id'] as String?,
+      recurringId: map['recurring_id'] as String?,
     );
   }
 
@@ -120,6 +126,7 @@ class Expense {
     String? currency,
     double? originalAmount,
     String? accountId,
+    String? recurringId,
   }) {
     return Expense(
       id: id ?? this.id,
@@ -136,6 +143,7 @@ class Expense {
       currency: currency ?? this.currency,
       originalAmount: originalAmount ?? this.originalAmount,
       accountId: accountId ?? this.accountId,
+      recurringId: recurringId ?? this.recurringId,
     );
   }
 }

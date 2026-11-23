@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -13,7 +12,9 @@ import '../utils/format.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_snackbar.dart';
 import '../widgets/empty_state.dart';
-import '../widgets/wallet/expense_flows.dart';
+import '../services/money_service.dart';
+import '../widgets/app_sheet.dart';
+import '../widgets/wallet/recurring_rule_sheet.dart';
 
 /// Repeating transactions: what's coming up, pause, change or stop.
 class RecurringPage extends ConsumerStatefulWidget {
@@ -24,77 +25,37 @@ class RecurringPage extends ConsumerStatefulWidget {
 }
 
 class _RecurringPageState extends ConsumerState<RecurringPage> {
-  late Future<List<RecurringRule>> _rules = RecurringService().all();
+  late Future<(List<RecurringRule>, Map<String, Account>)> _rules = _fetch();
 
-  void _reload() => setState(() => _rules = RecurringService().all());
+  static Future<(List<RecurringRule>, Map<String, Account>)> _fetch() async {
+    final (rules, accounts) = await (
+      RecurringService().all(),
+      AccountService().accounts(includeArchived: true),
+    ).wait;
+    return (rules, {for (final a in accounts) a.id: a});
+  }
 
-  Future<void> _edit(RecurringRule rule) async {
-    final controller = TextEditingController(
-      text: rule.amount == rule.amount.roundToDouble()
-          ? rule.amount.toStringAsFixed(0)
-          : rule.amount.toStringAsFixed(2),
-    );
-    final note = TextEditingController(text: rule.description ?? '');
-    final result = await showDialog<bool>(
+  void _reload() => setState(() => _rules = _fetch());
+
+  /// Opens the form for a new rule ([rule] null) or to change one.
+  Future<void> _edit([RecurringRule? rule]) async {
+    final saved = await showAppSheet<RecurringRule>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit recurring'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: note,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(labelText: 'Note'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-              ],
-              decoration: const InputDecoration(
-                labelText: 'Amount',
-                prefixText: '₹ ',
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Changes apply from the next one. Entries already added '
-              'stay as they are.',
-              style: AppTextStyles.bodySm.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+      builder: (_) => RecurringRuleSheet(existing: rule),
     );
-    final amount = double.tryParse(controller.text);
-    final text = note.text.trim();
-    controller.dispose();
-    note.dispose();
-    if (result != true || amount == null || amount <= 0) return;
-    await RecurringService().save(
-      rule.copyWith(
-        amount: amount,
-        description: () => text.isEmpty ? null : text,
-      ),
-    );
+    if (saved == null) return;
+    await RecurringService().save(saved);
+    // Dates up to today are added now (on this device, or by the sync).
+    await ref.read(expenseProviderProvider).refreshData();
     _reload();
+    if (!mounted) return;
+    AppSnackbar.success(
+      context,
+      rule == null
+          ? '${saved.description ?? 'Recurring entry'} saved. '
+                'Next on ${DateFormat('d MMM').format(saved.nextDate)}.'
+          : 'Changes saved.',
+    );
   }
 
   Future<void> _toggle(RecurringRule rule) async {
@@ -135,14 +96,11 @@ class _RecurringPageState extends ConsumerState<RecurringPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Recurring')),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await openAddExpense(context, provider);
-          _reload();
-        },
+        onPressed: _edit,
         icon: const Icon(Icons.add),
-        label: const Text('Add'),
+        label: const Text('New recurring'),
       ),
-      body: FutureBuilder<List<RecurringRule>>(
+      body: FutureBuilder<(List<RecurringRule>, Map<String, Account>)>(
         future: _rules,
         builder: (context, snap) {
           if (!snap.hasData) {
@@ -150,18 +108,13 @@ class _RecurringPageState extends ConsumerState<RecurringPage> {
               child: CircularProgressIndicator(strokeWidth: 2),
             );
           }
-          final rules = snap.data!;
+          final (rules, accounts) = snap.data!;
           final active = rules.where((r) => r.active);
           final monthly = active.fold<double>(
             0,
             (sum, r) =>
                 sum +
-                (r.isIncome ? -1 : 1) *
-                    switch (r.frequency) {
-                      Frequency.weekly => r.amount * 52 / 12,
-                      Frequency.monthly => r.amount,
-                      Frequency.yearly => r.amount / 12,
-                    },
+                (r.isIncome ? -1 : 1) * r.amount * r.frequency.perYear / 12,
           );
           return Align(
             alignment: Alignment.topCenter,
@@ -176,9 +129,10 @@ class _RecurringPageState extends ConsumerState<RecurringPage> {
                       icon: Icons.repeat_rounded,
                       title: 'Nothing repeats yet',
                       message:
-                          'Add rent, a subscription or your salary and pick '
-                          'how often it repeats. It is added for you on the '
-                          'day, with a reminder the evening before.',
+                          'Add rent, a subscription, an EMI or your salary: '
+                          'how much, how often and from when. Each one is '
+                          'added for you on the day, with a reminder the '
+                          'evening before.',
                     )
                   else ...[
                     AppCard(
@@ -210,6 +164,7 @@ class _RecurringPageState extends ConsumerState<RecurringPage> {
                         child: _RuleTile(
                           rule: r,
                           provider: provider,
+                          accounts: accounts,
                           onEdit: () => _edit(r),
                           onToggle: () => _toggle(r),
                           onDelete: () => _delete(r),
@@ -229,6 +184,7 @@ class _RecurringPageState extends ConsumerState<RecurringPage> {
 class _RuleTile extends StatelessWidget {
   final RecurringRule rule;
   final ExpenseProvider provider;
+  final Map<String, Account> accounts;
   final VoidCallback onEdit;
   final VoidCallback onToggle;
   final VoidCallback onDelete;
@@ -236,6 +192,7 @@ class _RuleTile extends StatelessWidget {
   const _RuleTile({
     required this.rule,
     required this.provider,
+    required this.accounts,
     required this.onEdit,
     required this.onToggle,
     required this.onDelete,
@@ -267,9 +224,20 @@ class _RuleTile extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    rule.active
-                        ? '${rule.frequency.label} · next ${DateFormat('d MMM').format(rule.nextDate)}'
-                        : '${rule.frequency.label} · paused',
+                    [
+                      rule.frequency.label,
+                      if (!rule.active)
+                        rule.endDate != null &&
+                                rule.nextDate.isAfter(rule.endDate!)
+                            ? 'ended'
+                            : 'paused'
+                      else
+                        'next ${DateFormat('d MMM').format(rule.nextDate)}',
+                      if (rule.active && rule.endDate != null)
+                        'until ${DateFormat('d MMM yy').format(rule.endDate!)}',
+                      if (accounts[rule.accountId] != null)
+                        accounts[rule.accountId]!.name,
+                    ].join(' · '),
                     style: AppTextStyles.bodySm.copyWith(
                       color: AppColors.textSecondary,
                     ),

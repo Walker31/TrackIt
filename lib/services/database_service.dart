@@ -302,6 +302,9 @@ class DatabaseService {
     ''');
     // Which account a transaction was paid from (or paid into).
     await _ensureColumn(db, 'expenses', 'account_id', 'TEXT');
+    // The recurring rule that added a transaction, and a rule's account.
+    await _ensureColumn(db, 'expenses', 'recurring_id', 'TEXT');
+    await _ensureColumn(db, 'recurring_rules', 'account_id', 'TEXT');
   }
 
   Future<void> _migrateToV5(DatabaseExecutor db) async {

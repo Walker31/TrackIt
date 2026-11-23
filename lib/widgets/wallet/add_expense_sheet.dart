@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../app_shortcuts.dart';
 import '../app_sheet.dart';
 import 'package:flutter/services.dart';
@@ -352,6 +353,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       attachmentUrl: _attachmentUrl,
       currency: _currency.isHome ? null : _currency.code,
       accountId: _accounts.any((a) => a.id == _accountId) ? _accountId : null,
+      recurringId: initial?.recurringId,
       originalAmount: _currency.isHome ? null : _entered,
       amount: amount,
       type: _type,
@@ -454,6 +456,11 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                           ),
                         ),
                       ),
+                      if (widget.initial?.recurringId != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: _FromRuleBanner(),
+                        ),
                       const SizedBox(height: 24),
                       FadeSlideIn(
                         child: ExpenseEntryFields(
@@ -854,7 +861,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
                 selected: _repeat == null,
                 onTap: () => setState(() => _repeat = null),
               ),
-              for (final f in Frequency.values)
+              for (final f in Frequency.common)
                 _SelectChip(
                   label: f.label,
                   icon: Icons.repeat_rounded,
@@ -1215,6 +1222,39 @@ class _SmsDialogState extends State<_SmsDialog> {
           child: const Text('Fill in'),
         ),
       ],
+    );
+  }
+}
+
+/// Shown when editing an entry a recurring rule added.
+class _FromRuleBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.repeat_rounded, size: 18, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Added by a recurring rule. Changes here affect only this one.',
+              style: AppTextStyles.bodySm,
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              GoRouter.of(context).push('/recurring');
+            },
+            child: const Text('Manage'),
+          ),
+        ],
+      ),
     );
   }
 }

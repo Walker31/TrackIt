@@ -118,6 +118,7 @@ class TransactionList extends StatelessWidget {
                 if (e.paymentMethod != null) e.paymentMethod!.label,
                 if (e.isForeign)
                   currencyFor(e.currency).format(e.originalAmount!),
+                if (e.recurringId != null) '↻ Repeats',
               ].join(' · '),
               trailingLabel: e.isIncome ? 'you received' : 'you spent',
               trailingAmount: formatRupees(e.amount),

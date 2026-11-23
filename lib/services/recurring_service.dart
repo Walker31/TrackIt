@@ -4,17 +4,30 @@ import 'api_service.dart';
 import 'database_service.dart';
 import 'id_generator.dart';
 import 'notification_service.dart';
+import 'prefs_service.dart';
 import 'sync_outbox.dart';
 import 'sync_service.dart';
 
 enum Frequency {
-  weekly('Weekly', 'week'),
-  monthly('Monthly', 'month'),
-  yearly('Yearly', 'year');
+  weekly('Weekly', 'week', 52),
+  biweekly('Every 2 weeks', '2 weeks', 26),
+  monthly('Monthly', 'month', 12),
+  quarterly('Every 3 months', '3 months', 4),
+  halfyearly('Every 6 months', '6 months', 2),
+  yearly('Yearly', 'year', 1);
 
   final String label;
   final String unit;
-  const Frequency(this.label, this.unit);
+
+  /// Times a year, for "fixed costs a month".
+  final int perYear;
+  const Frequency(this.label, this.unit, this.perYear);
+
+  /// Weekly kinds anchor on a weekday; the rest on a day of the month.
+  bool get byWeek => this == weekly || this == biweekly;
+
+  /// The usual choices in the add-expense sheet.
+  static const common = [weekly, monthly, yearly];
 
   static Frequency fromString(String v) =>
       values.firstWhere((f) => f.name == v, orElse: () => Frequency.monthly);
@@ -41,6 +54,10 @@ class RecurringRule {
   final DateTime? endDate;
   final bool active;
 
+  /// The account its transactions are paid from or into. Kept on this
+  /// device (accounts don't sync yet).
+  final String? accountId;
+
   const RecurringRule({
     required this.id,
     required this.amount,
@@ -55,7 +72,44 @@ class RecurringRule {
     required this.nextDate,
     this.endDate,
     this.active = true,
+    this.accountId,
   });
+
+  /// A new rule whose first transaction is due on [first]; nothing is
+  /// added before then.
+  factory RecurringRule.starting({
+    required DateTime first,
+    required Frequency frequency,
+    required double amount,
+    required TxnType type,
+    required ExpenseCategory category,
+    String? categoryId,
+    String? subcategoryId,
+    PaymentMethod? paymentMethod,
+    String? description,
+    DateTime? endDate,
+    String? accountId,
+  }) {
+    final day = DateTime(first.year, first.month, first.day);
+    return RecurringRule(
+      id: IdGenerator.uuid(),
+      amount: amount,
+      type: type,
+      category: category,
+      categoryId: categoryId,
+      subcategoryId: subcategoryId,
+      paymentMethod: paymentMethod,
+      description: description,
+      frequency: frequency,
+      anchorDay: anchorFor(day, frequency),
+      nextDate: day,
+      endDate: endDate,
+      accountId: accountId,
+    );
+  }
+
+  static int anchorFor(DateTime day, Frequency f) =>
+      f.byWeek ? day.weekday : day.day;
 
   bool get isIncome => type == TxnType.income;
 
@@ -67,7 +121,7 @@ class RecurringRule {
       e.timestamp.month,
       e.timestamp.day,
     );
-    final anchor = frequency == Frequency.weekly ? start.weekday : start.day;
+    final anchor = anchorFor(start, frequency);
     return RecurringRule(
       id: IdGenerator.uuid(),
       amount: e.amount,
@@ -80,6 +134,7 @@ class RecurringRule {
       frequency: frequency,
       anchorDay: anchor,
       nextDate: advance(start, frequency, anchor),
+      accountId: e.accountId,
     );
   }
 
@@ -97,6 +152,7 @@ class RecurringRule {
     'next_date': _date(nextDate),
     'end_date': endDate == null ? null : _date(endDate!),
     'active': active ? 1 : 0,
+    'account_id': accountId,
   };
 
   factory RecurringRule.fromMap(Map<String, Object?> m) => RecurringRule(
@@ -115,28 +171,62 @@ class RecurringRule {
         ? null
         : DateTime.parse(m['end_date'] as String),
     active: m['active'] == 1,
+    accountId: m['account_id'] as String?,
   );
 
   RecurringRule copyWith({
     double? amount,
+    TxnType? type,
+    ExpenseCategory? category,
+    String? Function()? categoryId,
+    String? Function()? subcategoryId,
+    PaymentMethod? Function()? paymentMethod,
     DateTime? nextDate,
+    Frequency? frequency,
+    DateTime? Function()? endDate,
     bool? active,
     String? Function()? description,
-  }) => RecurringRule(
-    id: id,
-    amount: amount ?? this.amount,
-    type: type,
-    category: category,
-    categoryId: categoryId,
-    subcategoryId: subcategoryId,
-    paymentMethod: paymentMethod,
-    description: description != null ? description() : this.description,
-    frequency: frequency,
-    anchorDay: anchorDay,
-    nextDate: nextDate ?? this.nextDate,
-    endDate: endDate,
-    active: active ?? this.active,
-  );
+    String? Function()? accountId,
+  }) {
+    final f = frequency ?? this.frequency;
+    final next = nextDate ?? this.nextDate;
+    return RecurringRule(
+      id: id,
+      amount: amount ?? this.amount,
+      type: type ?? this.type,
+      category: category ?? this.category,
+      categoryId: categoryId != null ? categoryId() : this.categoryId,
+      subcategoryId: subcategoryId != null
+          ? subcategoryId()
+          : this.subcategoryId,
+      paymentMethod: paymentMethod != null
+          ? paymentMethod()
+          : this.paymentMethod,
+      description: description != null ? description() : this.description,
+      frequency: f,
+      // A new date or frequency moves the anchor with it.
+      anchorDay: nextDate != null || frequency != null
+          ? anchorFor(next, f)
+          : anchorDay,
+      nextDate: next,
+      endDate: endDate != null ? endDate() : this.endDate,
+      active: active ?? this.active,
+      accountId: accountId != null ? accountId() : this.accountId,
+    );
+  }
+
+  /// Due dates from [nextDate] on, up to [count] of them, stopping at
+  /// [endDate].
+  List<DateTime> upcoming(int count) {
+    final out = <DateTime>[];
+    var d = nextDate;
+    while (out.length < count) {
+      if (endDate != null && d.isAfter(endDate!)) break;
+      out.add(d);
+      d = advance(d, frequency, anchorDay);
+    }
+    return out;
+  }
 
   /// The transaction this rule adds on [day].
   Expense expenseOn(DateTime day) => Expense(
@@ -147,6 +237,8 @@ class RecurringRule {
     subcategoryId: subcategoryId,
     paymentMethod: paymentMethod,
     description: description,
+    accountId: accountId,
+    recurringId: id,
     // Mid-morning, so it sorts after anything bought at midnight.
     timestamp: DateTime(day.year, day.month, day.day, 9),
   );
@@ -160,15 +252,23 @@ class RecurringRule {
 }
 
 /// The due date after [from] for a rule anchored on [anchor].
-DateTime advance(DateTime from, Frequency f, int anchor) {
-  switch (f) {
-    case Frequency.weekly:
-      return DateTime(from.year, from.month, from.day + 7);
-    case Frequency.monthly:
-      return _onDay(from.year, from.month + 1, anchor);
-    case Frequency.yearly:
-      return _onDay(from.year + 1, from.month, anchor);
+DateTime advance(DateTime from, Frequency f, int anchor) => switch (f) {
+  Frequency.weekly => DateTime(from.year, from.month, from.day + 7),
+  Frequency.biweekly => DateTime(from.year, from.month, from.day + 14),
+  Frequency.monthly => _onDay(from.year, from.month + 1, anchor),
+  Frequency.quarterly => _onDay(from.year, from.month + 3, anchor),
+  Frequency.halfyearly => _onDay(from.year, from.month + 6, anchor),
+  Frequency.yearly => _onDay(from.year + 1, from.month, anchor),
+};
+
+/// The date of the [n]th transaction (1 = [first]), for "ends after n".
+DateTime nthDate(DateTime first, Frequency f, int n) {
+  final anchor = RecurringRule.anchorFor(first, f);
+  var d = DateTime(first.year, first.month, first.day);
+  for (var i = 1; i < n; i++) {
+    d = advance(d, f, anchor);
   }
+  return d;
 }
 
 /// [day] of the month, or the month's last day when it's shorter.
@@ -280,7 +380,16 @@ class RecurringService {
             where: 'uuid = ?',
             whereArgs: [uuid],
           );
-          if (have.isNotEmpty) continue;
+          if (have.isNotEmpty) {
+            // Added by another device and pulled: still mark where it's from.
+            await txn.update(
+              'expenses',
+              {'recurring_id': rule.id},
+              where: 'uuid = ?',
+              whereArgs: [uuid],
+            );
+            continue;
+          }
           await txn.insert('expenses', {
             ...rule.expenseOn(day).toMap(),
             'is_synced': 0,
@@ -298,10 +407,14 @@ class RecurringService {
     return added;
   }
 
+  /// Hour of the "due tomorrow" reminder, the evening before (default 7 PM).
+  static const reminderHourKey = 'recurring_reminder_hour';
+
   /// A notification the evening before each active rule is due.
   Future<void> scheduleReminders() async {
     try {
       final rules = await all();
+      final hour = await PrefsService().getInt(reminderHourKey, 19);
       final notifications = NotificationService();
       for (var i = 0; i < 50; i++) {
         await notifications.cancel(_reminderBase + i);
@@ -312,7 +425,7 @@ class RecurringService {
           r.nextDate.year,
           r.nextDate.month,
           r.nextDate.day - 1,
-          19,
+          hour,
         );
         if (at.isBefore(DateTime.now())) {
           i++;

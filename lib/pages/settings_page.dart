@@ -15,6 +15,7 @@ import '../services/app_mode_service.dart';
 import '../services/backup_service.dart';
 import '../services/export_service.dart';
 import '../services/reminder_service.dart';
+import '../services/recurring_service.dart';
 import '../services/prefs_service.dart';
 import '../utils/payment_request.dart';
 import '../services/sync_service.dart';
@@ -44,6 +45,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _busyBackup = false;
   bool? _reminderOn;
   String? _upiId;
+  int _billHour = 19;
   (int, int) _reminderTime = (20, 0);
 
   /// Last finished sync and changes still waiting to upload.
@@ -55,14 +57,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Future<void> _loadReminder() async {
     final r = ReminderService();
-    final (on, time, upi) = await (
+    final (on, time, upi, billHour) = await (
       r.enabled(),
       r.time(),
       PrefsService().get('upi_id'),
+      PrefsService().getInt(RecurringService.reminderHourKey, 19),
     ).wait;
     if (mounted) {
       setState(() {
         _upiId = upi;
+        _billHour = billHour;
         _reminderOn = on;
         _reminderTime = time;
       });
@@ -103,6 +107,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
     await PrefsService().set('upi_id', value);
     await _loadReminder();
+  }
+
+  Future<void> _pickBillTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: _billHour, minute: 0),
+      helpText: 'Remind the evening before at',
+    );
+    if (picked == null) return;
+    await PrefsService().set(
+      RecurringService.reminderHourKey,
+      '${picked.hour}',
+    );
+    await RecurringService().scheduleReminders();
+    if (mounted) setState(() => _billHour = picked.hour);
   }
 
   Future<void> _pickReminderTime() async {
@@ -239,6 +258,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
             onTap: _pickReminderTime,
           ),
+      ]),
+      _section('Recurring', [
+        _SettingsTile(
+          icon: Icons.event_repeat_rounded,
+          title: 'Bills due tomorrow',
+          subtitle: 'A reminder the day before a recurring entry',
+          trailing: Text(
+            TimeOfDay(hour: _billHour, minute: 0).format(context),
+            style: AppTextStyles.bodyMd.copyWith(fontWeight: FontWeight.w600),
+          ),
+          onTap: _pickBillTime,
+        ),
       ]),
       _section('Export', [
         _SettingsTile(
