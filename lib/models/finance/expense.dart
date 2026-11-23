@@ -28,6 +28,9 @@ class Expense {
   final String? currency;
   final double? originalAmount;
 
+  /// The account it was paid from or into, if accounts are in use.
+  final String? accountId;
+
   Expense({
     this.id,
     required this.amount,
@@ -42,6 +45,7 @@ class Expense {
     this.attachmentUrl,
     this.currency,
     this.originalAmount,
+    this.accountId,
   });
 
   bool get isForeign =>
@@ -64,6 +68,7 @@ class Expense {
       'attachment_url': attachmentUrl,
       'currency': currency,
       'original_amount': originalAmount,
+      'account_id': accountId,
       'updated_at': DateTime.now().toIso8601String(),
     };
   }
@@ -83,6 +88,7 @@ class Expense {
       attachmentUrl: map['attachment_url'] as String?,
       currency: map['currency'] as String?,
       originalAmount: (map['original_amount'] as num?)?.toDouble(),
+      accountId: map['account_id'] as String?,
     );
   }
 
@@ -113,6 +119,7 @@ class Expense {
     String? attachmentUrl,
     String? currency,
     double? originalAmount,
+    String? accountId,
   }) {
     return Expense(
       id: id ?? this.id,
@@ -128,6 +135,7 @@ class Expense {
       attachmentUrl: attachmentUrl ?? this.attachmentUrl,
       currency: currency ?? this.currency,
       originalAmount: originalAmount ?? this.originalAmount,
+      accountId: accountId ?? this.accountId,
     );
   }
 }

@@ -8,6 +8,7 @@ import 'package:trackit/pages/progress_pages.dart';
 import 'package:trackit/pages/transactions_page.dart';
 import 'package:trackit/pages/recurring_page.dart';
 import 'package:trackit/pages/body_page.dart';
+import 'package:trackit/pages/money_pages.dart';
 import 'package:trackit/models/expenses.dart' show TxnType;
 import 'package:trackit/utils/transaction_filter.dart';
 import 'package:trackit/pages/auth/login_page.dart';
@@ -102,6 +103,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               initial: TransactionFilter(
                 from: DateTime.tryParse(q['from'] ?? ''),
                 to: DateTime.tryParse(q['to'] ?? ''),
+                accountId: q['account'],
                 type: switch (q['type']) {
                   'expense' => TxnType.expense,
                   'income' => TxnType.income,
@@ -115,6 +117,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/recurring',
         pageBuilder: (context, state) => appPage(state, const RecurringPage()),
+      ),
+      GoRoute(
+        path: '/accounts',
+        pageBuilder: (context, state) => appPage(state, const AccountsPage()),
+      ),
+      GoRoute(
+        path: '/goals',
+        pageBuilder: (context, state) => appPage(state, const GoalsPage()),
       ),
       GoRoute(
         path: '/body',

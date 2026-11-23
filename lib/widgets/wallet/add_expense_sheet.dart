@@ -10,6 +10,7 @@ import '../../services/cloudinary_service.dart';
 import '../../services/prefs_service.dart';
 import '../../models/finance/currency.dart';
 import '../../utils/sms_parser.dart';
+import '../../services/money_service.dart';
 import '../../services/recurring_service.dart' show Frequency;
 import '../animated/animated_segmented_tabs.dart';
 import '../animated/fade_slide_in.dart';
@@ -67,6 +68,10 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   PaymentMethod? _payment;
   DateTime _date = DateTime.now();
   Frequency? _repeat;
+
+  /// Accounts to pick from (none until the user adds one) and the choice.
+  List<Account> _accounts = const [];
+  String? _accountId;
   String? _error;
   final _cloudinary = CloudinaryService();
   String? _attachmentUrl;
@@ -116,6 +121,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       _pendingSubcategoryId = initial.subcategoryId;
       _pendingEventId = initial.eventId;
       _attachmentUrl = initial.attachmentUrl;
+      _accountId = initial.accountId;
       if (initial.isForeign) {
         _currency = currencyFor(initial.currency);
         final original = initial.originalAmount!;
@@ -147,7 +153,15 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
   Future<void> _load() async {
     final categories = await _catalog.getCategories(type: _type);
     final events = await _catalog.getEvents();
+    final accounts = await AccountService().accounts();
+    final lastAccount = widget.initial == null && _accountId == null
+        ? await AccountService().lastUsed()
+        : null;
     if (!mounted) return;
+    setState(() {
+      _accounts = accounts;
+      _accountId ??= lastAccount ?? accounts.firstOrNull?.id;
+    });
     final wantedId = _pendingCategoryId ?? _lastCategory[_type];
     _pendingCategoryId = null;
     final selected =
@@ -337,6 +351,7 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
       id: initial?.id,
       attachmentUrl: _attachmentUrl,
       currency: _currency.isHome ? null : _currency.code,
+      accountId: _accounts.any((a) => a.id == _accountId) ? _accountId : null,
       originalAmount: _currency.isHome ? null : _entered,
       amount: amount,
       type: _type,
@@ -797,6 +812,23 @@ class _AddExpenseSheetState extends State<AddExpenseSheet> {
             ),
           ]),
         ),
+        if (_accounts.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          _section(
+            _type == TxnType.income ? 'Into account' : 'From account',
+            _chipRow([
+              for (final a in _accounts)
+                _SelectChip(
+                  label: a.name,
+                  icon: a.kind.icon,
+                  selected: _accountId == a.id,
+                  onTap: () => setState(
+                    () => _accountId = _accountId == a.id ? null : a.id,
+                  ),
+                ),
+            ]),
+          ),
+        ],
         const SizedBox(height: 20),
         _section(
           'Paid with',

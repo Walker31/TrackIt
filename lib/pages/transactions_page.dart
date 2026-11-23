@@ -10,6 +10,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 import '../utils/format.dart';
 import '../utils/transaction_filter.dart';
+import '../services/money_service.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_sheet.dart';
 import '../widgets/app_snackbar.dart';
@@ -34,6 +35,7 @@ class _TransactionsPageState extends ConsumerState<TransactionsPage> {
   final _search = TextEditingController();
   late TransactionFilter _filter = widget.initial;
   List<Expense>? _all;
+  Map<String, Account> _accounts = const {};
 
   @override
   void initState() {
@@ -49,7 +51,13 @@ class _TransactionsPageState extends ConsumerState<TransactionsPage> {
 
   Future<void> _load() async {
     final all = await ref.read(expenseProviderProvider).allExpenses();
-    if (mounted) setState(() => _all = all);
+    final accounts = await AccountService().accounts(includeArchived: true);
+    if (mounted) {
+      setState(() {
+        _all = all;
+        _accounts = {for (final a in accounts) a.id: a};
+      });
+    }
   }
 
   Future<void> _openFilters(ExpenseProvider provider) async {
@@ -142,6 +150,27 @@ class _TransactionsPageState extends ConsumerState<TransactionsPage> {
                 ],
               ),
               const SizedBox(height: 10),
+              if (_filter.accountId != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: InputChip(
+                      avatar: Icon(
+                        _accounts[_filter.accountId]?.kind.icon ??
+                            Icons.account_balance_rounded,
+                        size: 18,
+                      ),
+                      label: Text(
+                        _accounts[_filter.accountId]?.name ?? 'One account',
+                      ),
+                      onDeleted: () => setState(
+                        () => _filter = _filter.copyWith(accountId: () => null),
+                      ),
+                      deleteButtonTooltipMessage: 'Show all accounts',
+                    ),
+                  ),
+                ),
               _QuickFilters(
                 filter: _filter,
                 onChanged: (f) => setState(() => _filter = f),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trackit/models/expenses.dart';
 import 'package:trackit/services/database_service.dart';
+import 'package:trackit/services/money_service.dart';
 import 'package:trackit/widgets/wallet/add_expense_sheet.dart';
 
 void main() {
@@ -28,7 +29,7 @@ void main() {
     );
     await tester.tap(find.text('open'));
     // The sheet reads categories from the database: let real I/O finish.
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < 12; i++) {
       await tester.runAsync(
         () => Future.delayed(const Duration(milliseconds: 50)),
       );
@@ -169,11 +170,34 @@ void main() {
     expect(find.textContaining('Enter the rate'), findsOneWidget);
     expect(result().$1, isNull);
   });
+  testWidgets('a new entry is tied to the chosen account', (tester) async {
+    late Account hdfc;
+    late Account cash;
+    await tester.runAsync(() async {
+      hdfc = Account.create('HDFC', AccountKind.bank, 0);
+      cash = Account.create('Cash', AccountKind.cash, 0);
+      await AccountService().save(hdfc);
+      await AccountService().save(cash);
+    });
+    final result = await openNew(tester);
+    expect(find.text('From account'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).at(1), '250');
+    await tester.tap(find.text('HDFC'));
+    await tester.pump();
+    await tester.tap(find.textContaining('Save ₹250'));
+    await tester.pump();
+    expect(result().$1!.accountId, hdfc.id);
+  });
+
+  testWidgets('without accounts there is no account row', (tester) async {
+    await openNew(tester);
+    expect(find.text('From account'), findsNothing);
+  });
 }
 
 /// Lets the sheet's database reads (real I/O) finish.
 Future<void> settleIo(WidgetTester tester) async {
-  for (var i = 0; i < 5; i++) {
+  for (var i = 0; i < 12; i++) {
     await tester.runAsync(
       () => Future.delayed(const Duration(milliseconds: 50)),
     );

@@ -12,6 +12,9 @@ class TransactionFilter {
   final double? minAmount;
   final double? maxAmount;
 
+  /// Only transactions paid from or into this account.
+  final String? accountId;
+
   const TransactionFilter({
     this.query = '',
     this.type,
@@ -21,6 +24,7 @@ class TransactionFilter {
     this.to,
     this.minAmount,
     this.maxAmount,
+    this.accountId,
   });
 
   bool get isEmpty =>
@@ -31,7 +35,8 @@ class TransactionFilter {
       from == null &&
       to == null &&
       minAmount == null &&
-      maxAmount == null;
+      maxAmount == null &&
+      accountId == null;
 
   /// Filters other than the text query, for the "N filters" badge.
   int get activeCount =>
@@ -39,7 +44,8 @@ class TransactionFilter {
       (categoryIds.isEmpty ? 0 : 1) +
       (paymentMethods.isEmpty ? 0 : 1) +
       (from == null && to == null ? 0 : 1) +
-      (minAmount == null && maxAmount == null ? 0 : 1);
+      (minAmount == null && maxAmount == null ? 0 : 1) +
+      (accountId == null ? 0 : 1);
 
   TransactionFilter copyWith({
     String? query,
@@ -50,6 +56,7 @@ class TransactionFilter {
     DateTime? Function()? to,
     double? Function()? minAmount,
     double? Function()? maxAmount,
+    String? Function()? accountId,
   }) => TransactionFilter(
     query: query ?? this.query,
     type: type != null ? type() : this.type,
@@ -59,12 +66,14 @@ class TransactionFilter {
     to: to != null ? to() : this.to,
     minAmount: minAmount != null ? minAmount() : this.minAmount,
     maxAmount: maxAmount != null ? maxAmount() : this.maxAmount,
+    accountId: accountId != null ? accountId() : this.accountId,
   );
 
   /// Whether [e] (whose category is [category]) passes. The text query
   /// matches the note, the category name or the amount, word by word.
   bool matches(Expense e, Category category) {
     if (type != null && e.type != type) return false;
+    if (accountId != null && e.accountId != accountId) return false;
     if (categoryIds.isNotEmpty && !categoryIds.contains(category.id)) {
       return false;
     }

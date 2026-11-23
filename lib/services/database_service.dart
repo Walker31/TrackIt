@@ -249,6 +249,59 @@ class DatabaseService {
     await db.execute(
       'UPDATE body_metrics SET uuid = $_uuidSql WHERE uuid IS NULL',
     );
+    await _ensureMoneyTables(db);
+  }
+
+  /// Accounts (cash, bank, card, wallet), transfers between them, and
+  /// savings goals with their contributions. Kept on this device and in
+  /// backups. Idempotent.
+  Future<void> _ensureMoneyTables(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS accounts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'bank',
+        opening_balance REAL NOT NULL DEFAULT 0,
+        archived INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS transfers (
+        id TEXT PRIMARY KEY,
+        from_account TEXT NOT NULL,
+        to_account TEXT NOT NULL,
+        amount REAL NOT NULL CHECK (amount > 0),
+        date TEXT NOT NULL,
+        note TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (from_account) REFERENCES accounts(id) ON DELETE CASCADE,
+        FOREIGN KEY (to_account) REFERENCES accounts(id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS goals (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        target REAL NOT NULL CHECK (target > 0),
+        target_date TEXT,
+        icon TEXT,
+        archived INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS goal_contributions (
+        id TEXT PRIMARY KEY,
+        goal_id TEXT NOT NULL,
+        amount REAL NOT NULL,
+        date TEXT NOT NULL,
+        note TEXT,
+        FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE CASCADE
+      )
+    ''');
+    // Which account a transaction was paid from (or paid into).
+    await _ensureColumn(db, 'expenses', 'account_id', 'TEXT');
   }
 
   Future<void> _migrateToV5(DatabaseExecutor db) async {
@@ -789,6 +842,10 @@ class DatabaseService {
       await txn.delete('expenses');
       await txn.delete('recurring_rules');
       await txn.delete('body_metrics');
+      await txn.delete('goal_contributions');
+      await txn.delete('goals');
+      await txn.delete('transfers');
+      await txn.delete('accounts');
       await txn.delete('budgets');
       await txn.delete('events');
       await txn.delete('group_expense_splits');

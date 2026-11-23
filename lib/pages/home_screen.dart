@@ -11,6 +11,7 @@ import '../widgets/dashboard/fitness_goal_section.dart';
 import '../widgets/dashboard/quick_add_card.dart';
 import '../widgets/wallet/expense_flows.dart';
 import 'body_page.dart' show BodyWeightCard;
+import 'money_pages.dart' show GoalsCard;
 import '../widgets/onboarding.dart' show OnboardingGate;
 
 class HomeScreen extends ConsumerWidget {
@@ -101,6 +102,8 @@ class HomeScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 16),
                   const FadeSlideIn(index: 5, child: BodyWeightCard()),
+                  const SizedBox(height: 16),
+                  const FadeSlideIn(index: 6, child: GoalsCard()),
                 ],
               ),
             ),

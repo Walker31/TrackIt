@@ -22,6 +22,7 @@ import '../widgets/wallet/events_section.dart';
 import '../widgets/wallet/trips_section.dart';
 import '../widgets/wallet/budgets_card.dart';
 import 'recurring_page.dart' show UpcomingRecurringCard;
+import 'money_pages.dart' show AccountsCard;
 import '../widgets/wallet/create_group_sheet.dart';
 import '../widgets/animated/animated_segmented_tabs.dart';
 import '../widgets/animated/fade_slide_in.dart';
@@ -133,6 +134,8 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
                               BudgetsCard(provider: provider),
                               const SizedBox(height: 16),
                               UpcomingRecurringCard(provider: provider),
+                              const SizedBox(height: 16),
+                              const AccountsCard(),
                             ],
                             right: [
                               SectionHeader(
